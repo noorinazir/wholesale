@@ -28,3 +28,4 @@ Thumbs.db
 /database/database.sqlite
 clear_data.php
 verify.php
+/worker-src/node_modules
