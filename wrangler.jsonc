@@ -1,0 +1,32 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "wholesale-outreach",
+  "main": "worker-src/index.ts",
+  "compatibility_date": "2026-01-10",
+  "containers": [
+    {
+      "class_name": "LaravelContainer",
+      "image": "./Dockerfile",
+      "instance_type": "basic",
+      "max_instances": 1
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "LARAVEL_APP",
+        "class_name": "LaravelContainer"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["LaravelContainer"]
+    }
+  ],
+  "vars": {
+    "KIMI_MODEL": "moonshot-v1-8k",
+    "KIMI_BASE_URL": "https://api.moonshot.cn/v1"
+  }
+}
