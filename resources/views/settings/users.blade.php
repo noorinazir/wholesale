@@ -17,7 +17,7 @@
                 @csrf
                 <input type="text" name="name" placeholder="Name" value="{{ old('name') }}" required class="rounded-md border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300">
                 <input type="email" name="email" placeholder="Email" value="{{ old('email') }}" required class="rounded-md border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300">
-                <input type="password" name="password" placeholder="Password (min 8, A-Z, a-z, 0-9, special)" required class="rounded-md border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300">
+                <input type="password" name="password" placeholder="Min 8 chars: uppercase, lowercase, number, special char" required class="rounded-md border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300">
                 <select name="role" class="rounded-md border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300">
                     <option value="administrator" {{ old('role') === 'administrator' ? 'selected' : '' }}>Administrator</option>
                     <option value="manager" {{ old('role') === 'manager' ? 'selected' : '' }}>Manager</option>
