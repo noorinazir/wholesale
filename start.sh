@@ -17,6 +17,12 @@ fi
 
 # Override critical config in .env for Render deployment
 sed -i 's|^DB_CONNECTION=.*|DB_CONNECTION=pgsql|' .env
+# Clear stale MySQL/SQLite DB vars so DB_URL is used exclusively
+sed -i 's|^DB_HOST=.*|DB_HOST=|' .env
+sed -i 's|^DB_PORT=.*|DB_PORT=|' .env
+sed -i 's|^DB_DATABASE=.*|DB_DATABASE=|' .env
+sed -i 's|^DB_USERNAME=.*|DB_USERNAME=|' .env
+sed -i 's|^DB_PASSWORD=.*|DB_PASSWORD=|' .env
 sed -i 's|^APP_ENV=.*|APP_ENV=production|' .env
 sed -i 's|^APP_DEBUG=.*|APP_DEBUG=false|' .env
 sed -i 's|^SESSION_DRIVER=.*|SESSION_DRIVER=file|' .env
