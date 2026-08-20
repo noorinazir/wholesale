@@ -39,7 +39,7 @@ return [
         'api_key' => env('KIMI_API_KEY'),
         'model' => env('KIMI_MODEL', 'kimi-k3'),
         'temperature' => env('KIMI_TEMPERATURE', 0.7),
-        'max_tokens' => env('KIMI_MAX_TOKENS', 2048),
+        'max_tokens' => env('KIMI_MAX_TOKENS', 800),
         'base_url' => env('KIMI_BASE_URL', 'https://api.moonshot.ai/v1'),
     ],
 

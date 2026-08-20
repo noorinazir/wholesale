@@ -16,7 +16,8 @@ class EmailPersonalizationService
     public function __construct(
         private KimiService $kimiService,
         private PromptBuilder $promptBuilder,
-        private DocumentRequestDetector $documentDetector
+        private DocumentRequestDetector $documentDetector,
+        private TemplateEngine $templateEngine
     ) {}
 
     public function generateEmail(
@@ -28,20 +29,55 @@ class EmailPersonalizationService
         ?string $customInstructions = null,
         ?int $campaignId = null
     ): array {
-        $previousHistory = $this->getPreviousHistory($vendor);
+        $personalization = $this->getAIPersonalization($vendor, $company, $objective, $tone, $customInstructions, $user);
 
-        $messages = $this->promptBuilder->buildEmailGenerationPrompt(
-            $vendor, $company, $objective, $tone, $customInstructions, $previousHistory
-        );
+        $emailData = $this->templateEngine->buildEmail($vendor, $company, $objective, $tone, $personalization);
 
-        $result = $this->kimiService->chat($messages);
+        $qualityChecks = $this->runQualityChecks($emailData, $vendor);
 
-        $aiGeneration = $this->logGeneration($vendor, $user, $result, $messages, 'generate_email');
+        $generatedEmail = GeneratedEmail::create([
+            'vendor_id' => $vendor->id,
+            'campaign_id' => $campaignId,
+            'user_id' => $user?->id,
+            'subject' => $emailData['subject'],
+            'body' => $emailData['body'],
+            'personalization_notes' => $emailData['personalization_notes'],
+            'tone' => $tone,
+            'objective' => $objective,
+            'custom_instructions' => $customInstructions,
+            'ai_model' => $this->kimiService->getModel(),
+            'status' => 'draft',
+            'quality_checks' => $qualityChecks,
+        ]);
+
+        return [
+            'success' => true,
+            'email' => $generatedEmail,
+            'quality_checks' => $qualityChecks,
+            'ai_generation_id' => $personalization['ai_generation_id'] ?? null,
+        ];
+    }
+
+    private function getAIPersonalization(
+        Vendor $vendor,
+        ?Company $company,
+        string $objective,
+        string $tone,
+        ?string $customInstructions,
+        ?User $user
+    ): array {
+        $messages = $this->promptBuilder->buildPersonalizationPrompt($vendor, $company, $objective, $tone, $customInstructions);
+
+        $result = $this->kimiService->chat($messages, ['max_tokens' => 400]);
+
+        $aiGeneration = $this->logGeneration($vendor, $user, $result, $messages, 'personalize_email');
 
         if (!$result['success']) {
             return [
-                'success' => false,
-                'error' => $result['error'] ?? 'AI generation failed',
+                'opening' => "I hope this email finds you well. I'm reaching out because we've been following {$vendor->brand_name} and are impressed with your product line.",
+                'value_prop' => '',
+                'category_question' => 'Do you have a wholesale or dealer program available?',
+                'notes' => 'AI personalization failed, used default snippets',
                 'ai_generation_id' => $aiGeneration->id ?? null,
             ];
         }
@@ -50,36 +86,21 @@ class EmailPersonalizationService
 
         if (!$parsed['success']) {
             return [
-                'success' => false,
-                'error' => $parsed['error'],
+                'opening' => "I hope this email finds you well. I'm reaching out because we've been following {$vendor->brand_name} and are impressed with your product line.",
+                'value_prop' => '',
+                'category_question' => 'Do you have a wholesale or dealer program available?',
+                'notes' => 'AI response parse failed, used default snippets',
                 'ai_generation_id' => $aiGeneration->id ?? null,
             ];
         }
 
-        $qualityChecks = $this->runQualityChecks($parsed['data'], $vendor);
-
-        $generatedEmail = GeneratedEmail::create([
-            'vendor_id' => $vendor->id,
-            'campaign_id' => $campaignId,
-            'user_id' => $user?->id,
-            'subject' => $parsed['data']['subject'],
-            'body' => $parsed['data']['body'],
-            'personalization_notes' => $parsed['data']['personalization_notes'] ?? null,
-            'tone' => $tone,
-            'objective' => $objective,
-            'custom_instructions' => $customInstructions,
-            'ai_model' => $result['model'] ?? $this->kimiService->getModel(),
-            'status' => 'draft',
-            'quality_checks' => $qualityChecks,
-        ]);
-
-        $aiGeneration->update(['generated_email_id' => $generatedEmail->id]);
-
+        $data = $parsed['data'];
         return [
-            'success' => true,
-            'email' => $generatedEmail,
-            'quality_checks' => $qualityChecks,
-            'ai_generation_id' => $aiGeneration->id,
+            'opening' => $data['opening'] ?? '',
+            'value_prop' => $data['value_prop'] ?? '',
+            'category_question' => $data['category_question'] ?? '',
+            'notes' => $data['notes'] ?? '',
+            'ai_generation_id' => $aiGeneration->id ?? null,
         ];
     }
 
@@ -162,27 +183,49 @@ class EmailPersonalizationService
         int $sequence,
         ?User $user = null
     ): array {
+        if ($sequence >= 2) {
+            $templateData = $this->templateEngine->buildFollowUp(
+                $vendor, $company, $originalEmail->subject, $sequence
+            );
+            return [
+                'success' => true,
+                'subject' => $templateData['subject'],
+                'body' => $templateData['body'],
+                'personalization_notes' => $templateData['personalization_notes'],
+            ];
+        }
+
         $messages = $this->promptBuilder->buildFollowUpPrompt(
             $vendor, $company, $originalEmail->subject, $originalEmail->body, $sequence
         );
 
-        $result = $this->kimiService->chat($messages);
+        $result = $this->kimiService->chat($messages, ['max_tokens' => 800]);
 
         $this->logGeneration($vendor, $user, $result, $messages, 'generate_followup');
 
         if (!$result['success']) {
+            $templateData = $this->templateEngine->buildFollowUp(
+                $vendor, $company, $originalEmail->subject, $sequence
+            );
             return [
-                'success' => false,
-                'error' => $result['error'] ?? 'Follow-up generation failed',
+                'success' => true,
+                'subject' => $templateData['subject'],
+                'body' => $templateData['body'],
+                'personalization_notes' => $templateData['personalization_notes'] . ' (AI failed, used template)',
             ];
         }
 
         $parsed = $this->parseResponse($result['content']);
 
         if (!$parsed['success']) {
+            $templateData = $this->templateEngine->buildFollowUp(
+                $vendor, $company, $originalEmail->subject, $sequence
+            );
             return [
-                'success' => false,
-                'error' => $parsed['error'],
+                'success' => true,
+                'subject' => $templateData['subject'],
+                'body' => $templateData['body'],
+                'personalization_notes' => $templateData['personalization_notes'] . ' (AI parse failed, used template)',
             ];
         }
 
@@ -203,87 +246,80 @@ class EmailPersonalizationService
     ): array {
         $requestedDocs = $this->documentDetector->detectRequestedDocuments($replySubject . ' ' . $replyBody);
 
-        $documentContext = '';
         $matchingDocuments = collect();
 
         if ($company) {
-            $documentContext = $this->documentDetector->buildDocumentContext($company, $requestedDocs);
             $matchingDocuments = $this->documentDetector->getMatchingDocuments($company, $requestedDocs);
         }
 
-        $systemPrompt = "You are an expert B2B wholesale business development assistant.\n\n" .
-            "A vendor has replied to your outreach email and requested specific documents (such as Resale Tax ID, EIN, Business License, or W-9).\n" .
-            "Your task is to draft a professional response email that:\n" .
-            "1. Thanks them for their reply and interest.\n" .
-            "2. Acknowledges their document request specifically.\n" .
-            "3. Mentions that the requested document(s) are attached to this email (if available).\n" .
-            "4. Includes relevant identification numbers from the company profile (Resale Tax ID, EIN) if available.\n" .
-            "5. Asks about next steps in the wholesale/vendor approval process.\n" .
-            "6. Keeps the email professional, concise, and warm.\n" .
-            "7. Does not invent facts or claim to have documents that are not available.\n" .
-            "8. If a requested document is NOT available, mentions you will provide it shortly and asks for their preferred delivery method.\n\n" .
-            "Return JSON:\n" .
-            "{\"subject\": \"...\", \"body\": \"...\", \"personalization_notes\": \"...\", \"requested_documents\": [\"...\"], \"attached_documents\": [\"...\"]}";
+        $attachedDocNames = $matchingDocuments->pluck('type')->map(function ($type) {
+            $labels = [
+                'resell_tax_id' => 'Resale Tax ID certificate',
+                'ein' => 'EIN verification letter',
+                'business_license' => 'Business License',
+                'other' => 'Supporting documents',
+            ];
+            return $labels[$type] ?? ucfirst(str_replace('_', ' ', $type));
+        })->toArray();
 
-        $userPrompt = "VENDOR INFORMATION:\n{$this->promptBuilder->formatVendorInfoPublic($vendor)}\n\n";
-        $userPrompt .= "COMPANY INFORMATION:\n{$this->promptBuilder->formatCompanyInfoPublic($company)}\n\n";
-        $userPrompt .= "VENDOR'S REPLY SUBJECT: {$replySubject}\n\n";
-        $userPrompt .= "VENDOR'S REPLY BODY:\n{$replyBody}\n\n";
+        $systemPrompt = "You are a B2B outreach assistant. Write a 1-sentence opening for a document response email. Thank the vendor for their reply and acknowledge their document request. Be concise and professional. Max 30 words.";
 
-        if ($documentContext) {
-            $userPrompt .= "DOCUMENT CONTEXT:\n{$documentContext}\n\n";
-        }
-
-        $userPrompt .= "Return JSON:\n";
-        $userPrompt .= "{\"subject\": \"...\", \"body\": \"...\", \"personalization_notes\": \"...\", \"requested_documents\": [\"...\"], \"attached_documents\": [\"...\"]}";
+        $userPrompt = "VENDOR: {$vendor->brand_name}\n";
+        $userPrompt .= "REPLY SUBJECT: {$replySubject}\n";
+        $userPrompt .= "REQUESTED DOCUMENTS: " . (empty($requestedDocs) ? 'Not specified' : implode(', ', $requestedDocs)) . "\n";
+        $userPrompt .= "\nReturn JSON: {\"opening\": \"...\", \"notes\": \"...\"}";
 
         $messages = [
             ['role' => 'system', 'content' => $systemPrompt],
             ['role' => 'user', 'content' => $userPrompt],
         ];
 
-        $result = $this->kimiService->chat($messages);
+        $result = $this->kimiService->chat($messages, ['max_tokens' => 200]);
         $aiGeneration = $this->logGeneration($vendor, $user, $result, $messages, 'document_response');
 
-        if (!$result['success']) {
-            return [
-                'success' => false,
-                'error' => $result['error'] ?? 'AI generation failed',
-                'ai_generation_id' => $aiGeneration->id ?? null,
-            ];
+        $personalization = [
+            'requested_documents' => $requestedDocs,
+            'attached_documents' => $attachedDocNames,
+            'notes' => 'Template-based document response',
+        ];
+
+        if ($result['success']) {
+            $parsed = $this->parseResponse($result['content']);
+            if ($parsed['success']) {
+                $personalization['opening'] = $parsed['data']['opening'] ?? '';
+                $personalization['notes'] = $parsed['data']['notes'] ?? 'AI-assisted document response';
+            }
         }
 
-        $parsed = $this->parseResponse($result['content']);
+        $emailData = $this->templateEngine->buildDocumentResponse(
+            $vendor, $company, $replySubject, $replyBody, $personalization
+        );
 
-        if (!$parsed['success']) {
-            return [
-                'success' => false,
-                'error' => $parsed['error'],
-                'ai_generation_id' => $aiGeneration->id ?? null,
-            ];
-        }
+        $qualityChecks = $this->runQualityChecks($emailData, $vendor);
 
         $generatedEmail = GeneratedEmail::create([
             'vendor_id' => $vendor->id,
             'user_id' => $user?->id,
-            'subject' => $parsed['data']['subject'],
-            'body' => $parsed['data']['body'],
-            'personalization_notes' => $parsed['data']['personalization_notes'] ?? null,
+            'subject' => $emailData['subject'],
+            'body' => $emailData['body'],
+            'personalization_notes' => $emailData['personalization_notes'],
             'tone' => 'professional',
             'objective' => 'Document Response',
             'ai_model' => $result['model'] ?? $this->kimiService->getModel(),
             'status' => 'draft',
-            'quality_checks' => $this->runQualityChecks($parsed['data'], $vendor),
+            'quality_checks' => $qualityChecks,
         ]);
 
-        $aiGeneration->update(['generated_email_id' => $generatedEmail->id]);
+        if (isset($aiGeneration)) {
+            $aiGeneration->update(['generated_email_id' => $generatedEmail->id]);
+        }
 
         return [
             'success' => true,
             'email' => $generatedEmail,
             'requested_documents' => $requestedDocs,
             'attachments' => $matchingDocuments,
-            'ai_generation_id' => $aiGeneration->id,
+            'ai_generation_id' => $aiGeneration->id ?? null,
         ];
     }
 

@@ -9,6 +9,7 @@ use App\Models\FollowUp;
 use App\Models\Vendor;
 use App\Models\Notification;
 use App\Services\AI\EmailPersonalizationService;
+use App\Services\AI\TemplateEngine;
 use App\Models\Company;
 use App\Jobs\ProcessEmailQueueJob;
 use Illuminate\Support\Facades\Log;
@@ -122,31 +123,16 @@ class FollowUpService
     private function generateFollowUpBody(Vendor $vendor, EmailQueue $originalEmail, int $sequence): string
     {
         $company = Company::where('is_active', true)->first();
-        $generatedEmail = $originalEmail->generatedEmail;
+        $templateEngine = app(TemplateEngine::class);
 
-        if ($generatedEmail) {
-            try {
-                $service = app(EmailPersonalizationService::class);
+        $templateData = $templateEngine->buildFollowUp(
+            $vendor,
+            $company,
+            $originalEmail->subject,
+            $sequence
+        );
 
-                $result = $service->generateFollowUp(
-                    $vendor,
-                    $company,
-                    $generatedEmail,
-                    $sequence,
-                    null
-                );
-
-                if ($result['success']) {
-                    return $result['body'];
-                }
-            } catch (\Exception $e) {
-                Log::warning('AI follow-up generation failed, using template', ['error' => $e->getMessage()]);
-            }
-        }
-
-        $firstName = $vendor->contact_name ? explode(' ', $vendor->contact_name)[0] : 'there';
-
-        return "Hi {$firstName},\n\nI wanted to follow up on my previous email regarding a potential wholesale partnership with {$vendor->brand_name}. We're still very interested in exploring opportunities to distribute your products on Amazon.\n\nWould you be available for a quick call this week to discuss?\n\nBest regards";
+        return $templateData['body'];
     }
 
     public function cancelFollowUpsForVendor(int $vendorId, ?int $campaignId = null): void

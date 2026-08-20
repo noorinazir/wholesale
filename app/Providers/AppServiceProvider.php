@@ -2,7 +2,6 @@
 
 namespace App\Providers;
 
-use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use App\Models\SystemSetting;
 
@@ -18,20 +17,7 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        Gate::define('manage-settings', function ($user) {
-            return $user->isAdmin();
-        });
-
-        Gate::define('manage-vendors', function ($user) {
-            return $user->isStaff();
-        });
-
-        Gate::define('manage-campaigns', function ($user) {
-            return $user->isManager();
-        });
-
-        Gate::define('send-emails', function ($user) {
-            return $user->isManager();
-        });
+        // Authorization is handled entirely by Spatie Permission package.
+        // Permissions are seeded in DatabaseSeeder and assigned to roles there.
     }
 }

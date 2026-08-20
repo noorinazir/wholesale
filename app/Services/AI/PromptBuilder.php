@@ -43,6 +43,45 @@ class PromptBuilder
         ];
     }
 
+    public function buildPersonalizationPrompt(
+        Vendor $vendor,
+        ?Company $company,
+        string $objective,
+        string $tone,
+        ?string $customInstructions = null
+    ): array {
+        $systemPrompt = "You are a B2B outreach assistant. Generate 3 short personalized snippets for a wholesale email. Be concise, factual, and professional. Do not invent facts.";
+
+        $userPrompt = "VENDOR:\n";
+        $userPrompt .= "Brand: {$vendor->brand_name}\n";
+        if ($vendor->product_category) $userPrompt .= "Category: {$vendor->product_category}\n";
+        if ($vendor->website) $userPrompt .= "Website: {$vendor->website}\n";
+        if ($vendor->contact_name) $userPrompt .= "Contact: {$vendor->contact_name}\n";
+        if ($vendor->notes) $userPrompt .= "Notes: {$vendor->notes}\n";
+
+        $userPrompt .= "\nOUR COMPANY: " . ($company?->company_name ?? 'N/A') . "\n";
+        if ($company?->business_description) $userPrompt .= "About: " . mb_substr($company->business_description, 0, 200) . "\n";
+        if ($company?->amazon_store_url) $userPrompt .= "Amazon Store: {$company->amazon_store_url}\n";
+
+        $userPrompt .= "\nOBJECTIVE: {$objective}\n";
+        $userPrompt .= "TONE: {$tone}\n";
+
+        if ($customInstructions) {
+            $userPrompt .= "INSTRUCTIONS: {$customInstructions}\n";
+        }
+
+        $userPrompt .= "\nGenerate:\n";
+        $userPrompt .= "1. opening: 1-2 sentences mentioning the brand and why we're interested (max 40 words)\n";
+        $userPrompt .= "2. value_prop: 1 sentence on why our company is a good reseller (max 25 words)\n";
+        $userPrompt .= "3. category_question: 1 relevant question about their wholesale/dealer program (max 20 words)\n";
+        $userPrompt .= "\nReturn JSON: {\"opening\": \"...\", \"value_prop\": \"...\", \"category_question\": \"...\", \"notes\": \"...\"}";
+
+        return [
+            ['role' => 'system', 'content' => $systemPrompt],
+            ['role' => 'user', 'content' => $userPrompt],
+        ];
+    }
+
     public function buildResearchPrompt(Vendor $vendor): array
     {
         $systemPrompt = "You are a B2B research assistant. Analyze the provided vendor information and provide useful insights for wholesale outreach.";
