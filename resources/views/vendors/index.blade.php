@@ -324,48 +324,60 @@
         <div x-show="show" x-transition
              class="fixed inset-0 z-50 flex items-center justify-center p-4"
              @click.self="show = false">
-            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
                 <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-800 z-10">
                     <h3 class="text-sm font-semibold text-gray-800 dark:text-gray-200">Add New Vendor</h3>
                     <button @click="show = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                     </button>
                 </div>
-                <form method="POST" action="{{ route('vendors.create') }}" class="p-4 space-y-3">
+                <form method="POST" action="{{ route('vendors.create') }}" class="p-4">
                     @csrf
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-3 gap-y-2.5">
                         <div>
-                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Brand Name <span class="text-red-500">*</span></label>
-                            <input type="text" name="brand_name" required placeholder="e.g. Acme Pet Supplies" class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-0.5">Brand Name <span class="text-red-500">*</span></label>
+                            <input type="text" name="brand_name" required placeholder="Acme Pet Supplies" class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
                         </div>
                         <div>
-                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Company Name</label>
-                            <input type="text" name="company_name" placeholder="Legal entity name" class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-0.5">Contact Email</label>
+                            <input type="email" name="contact_email" placeholder="name@company.com" class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
                         </div>
                         <div>
-                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Website</label>
+                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-0.5">Phone</label>
+                            <input type="text" name="phone" placeholder="+1 555-0100" class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-0.5">Website</label>
                             <input type="text" name="website" placeholder="https://..." class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
                         </div>
                         <div>
-                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Product Category</label>
+                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-0.5">Company Name</label>
+                            <input type="text" name="company_name" placeholder="Legal entity" class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-0.5">Contact Name</label>
+                            <input type="text" name="contact_name" placeholder="John Doe" class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-0.5">Category</label>
                             <select name="product_category" class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
-                                <option value="">Select category</option>
+                                <option value="">Select...</option>
                                 @foreach($categories as $val => $label)
                                 <option value="{{ $val }}">{{ $label }}</option>
                                 @endforeach
                             </select>
                         </div>
                         <div>
-                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Country</label>
+                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-0.5">Country</label>
                             <select name="country" class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
-                                <option value="">Select country</option>
+                                <option value="">Select...</option>
                                 @foreach($countries as $val => $label)
                                 <option value="{{ $val }}">{{ $label }}</option>
                                 @endforeach
                             </select>
                         </div>
                         <div>
-                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Priority</label>
+                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-0.5">Priority</label>
                             <select name="priority" class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
                                 <option value="medium">Medium</option>
                                 <option value="low">Low</option>
@@ -374,33 +386,25 @@
                             </select>
                         </div>
                         <div>
-                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Contact Name</label>
-                            <input type="text" name="contact_name" placeholder="Person to reach out to" class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
-                        </div>
-                        <div>
-                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Contact Email</label>
-                            <input type="email" name="contact_email" placeholder="name@company.com" class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
-                        </div>
-                        <div>
-                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Phone</label>
-                            <input type="text" name="phone" placeholder="+1..." class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
-                        </div>
-                        <div>
-                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Contact Source</label>
+                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-0.5">Contact Source</label>
                             <select name="contact_source" class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
-                                <option value="">How did you find them?</option>
+                                <option value="">Select...</option>
                                 @foreach($sources as $val => $label)
                                 <option value="{{ $val }}">{{ $label }}</option>
                                 @endforeach
                             </select>
                         </div>
+                        <div class="sm:col-span-2 lg:col-span-2">
+                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-0.5">Notes</label>
+                            <input type="text" name="notes" placeholder="Any additional context..." class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                        </div>
                     </div>
-                    <div>
-                        <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Notes</label>
-                        <textarea name="notes" rows="2" placeholder="Any additional context..." class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"></textarea>
-                    </div>
-                    <div class="flex items-center justify-end gap-2 pt-1 border-t border-gray-100 dark:border-gray-700">
+                    <div class="flex items-center justify-end gap-2 pt-3 mt-3 border-t border-gray-100 dark:border-gray-700">
                         <button type="button" @click="show = false" class="px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">Cancel</button>
+                        <button type="submit" name="add_another" value="1" class="px-3 py-1.5 text-sm font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 dark:text-indigo-400 dark:bg-indigo-900/30 dark:hover:bg-indigo-900/50 rounded-lg transition-colors flex items-center gap-1.5">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                            Save & Add Another
+                        </button>
                         <button type="submit" class="px-3 py-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors flex items-center gap-1.5">
                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
                             Create Vendor
