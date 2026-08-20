@@ -3,11 +3,9 @@
 namespace App\Console\Commands;
 
 use App\Services\EmailSendingService;
-use App\Models\EmailQueue;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Log;
 
 #[Signature('emails:process-queue')]
 #[Description('Process pending email queue items with rate limiting and schedule checks')]
@@ -26,16 +24,7 @@ class ProcessEmailQueueCommand extends Command
         $maxPerRun = 20;
 
         while ($processed < $maxPerRun && $sendingService->canSend()) {
-            $item = EmailQueue::where('status', 'scheduled')
-                ->where('scheduled_at', '<=', now())
-                ->orderBy('scheduled_at')
-                ->first();
-
-            if (!$item) {
-                $item = EmailQueue::where('status', 'pending')
-                    ->orderBy('id')
-                    ->first();
-            }
+            $item = $sendingService->claimNextQueueItem();
 
             if (!$item) {
                 break;

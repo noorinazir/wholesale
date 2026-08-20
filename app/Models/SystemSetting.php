@@ -5,12 +5,11 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\Cache;
 
 class SystemSetting extends Model
 {
     use HasFactory;
-
-    protected static array $cache = [];
 
     protected $fillable = [
         'key', 'value', 'group', 'description', 'is_encrypted',
@@ -25,18 +24,21 @@ class SystemSetting extends Model
 
     public static function get(string $key, $default = null)
     {
-        if (array_key_exists($key, static::$cache)) {
-            return static::$cache[$key];
+        $cacheKey = static::cacheKey($key);
+
+        if (Cache::has($cacheKey)) {
+            return Cache::get($cacheKey);
         }
 
         $setting = static::where('key', $key)->first();
         if (!$setting) {
-            static::$cache[$key] = $default;
+            Cache::put($cacheKey, $default, now()->addHour());
             return $default;
         }
 
         $value = $setting->is_encrypted ? Crypt::decrypt($setting->value) : $setting->value;
-        static::$cache[$key] = $value;
+        Cache::put($cacheKey, $value, now()->addHour());
+
         return $value;
     }
 
@@ -48,11 +50,28 @@ class SystemSetting extends Model
         $setting->is_encrypted = $encrypt;
         $setting->save();
 
-        static::$cache[$key] = $value;
+        Cache::forget(static::cacheKey($key));
+        Cache::put(static::cacheKey($key), $value, now()->addHour());
     }
 
     public static function flushCache(): void
     {
-        static::$cache = [];
+        if (!Cache::has(static::cacheVersionKey())) {
+            Cache::forever(static::cacheVersionKey(), 1);
+        }
+
+        Cache::increment(static::cacheVersionKey());
+    }
+
+    private static function cacheVersionKey(): string
+    {
+        return 'system_settings:cache_version';
+    }
+
+    private static function cacheKey(string $key): string
+    {
+        $version = (int) Cache::get(static::cacheVersionKey(), 1);
+
+        return 'system_settings:v' . $version . ':' . $key;
     }
 }

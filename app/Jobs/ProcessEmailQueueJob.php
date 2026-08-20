@@ -2,7 +2,6 @@
 
 namespace App\Jobs;
 
-use App\Models\EmailQueue;
 use App\Services\EmailSendingService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -44,16 +43,7 @@ class ProcessEmailQueueJob implements ShouldQueue
         $maxPerRun = 20;
 
         while ($processed < $maxPerRun && $sendingService->canSend()) {
-            $item = EmailQueue::where('status', 'scheduled')
-                ->where('scheduled_at', '<=', now())
-                ->orderBy('scheduled_at')
-                ->first();
-
-            if (!$item) {
-                $item = EmailQueue::where('status', 'pending')
-                    ->orderBy('id')
-                    ->first();
-            }
+            $item = $sendingService->claimNextQueueItem();
 
             if (!$item) {
                 break;

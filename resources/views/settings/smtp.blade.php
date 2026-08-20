@@ -4,7 +4,7 @@
     </x-slot>
 
     @php
-    $smtp = \App\Models\SmtpSetting::where('is_active', true)->first() ?? new \App\Models\SmtpSetting();
+    $smtp = $activeSmtpSetting ?? new \App\Models\SmtpSetting();
     @endphp
 
     <div class="max-w-3xl mx-auto space-y-6">

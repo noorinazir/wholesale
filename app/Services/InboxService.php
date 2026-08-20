@@ -38,6 +38,9 @@ class InboxService
 
         $encryption = $smtp->imap_encryption ?: 'ssl';
         $port = $smtp->imap_port ?: ($encryption === 'ssl' ? 993 : 143);
+        $validateCert = !app()->environment(['local', 'testing']);
+        $lastUid = (int) ($smtp->last_imap_uid ?? 0);
+        $maxUid = $lastUid;
 
         try {
             $client = ImapClientFacade::make([
@@ -45,7 +48,7 @@ class InboxService
                 'port' => $port,
                 'protocol' => 'imap',
                 'encryption' => $encryption === 'notls' ? 'none' : $encryption,
-                'validate_cert' => false,
+                'validate_cert' => $validateCert,
                 'username' => $smtp->imap_username,
                 'password' => $password,
                 'timeout' => 30,
@@ -59,8 +62,7 @@ class InboxService
                 return ['success' => false, 'message' => 'INBOX folder not found.'];
             }
 
-            $query = $folder->query()->all();
-            $messages = $query->get();
+            $messages = $folder->query()->all()->get();
         } catch (\Exception $e) {
             Log::error('IMAP connection failed: ' . $e->getMessage());
             return ['success' => false, 'message' => 'IMAP connection failed: ' . $e->getMessage()];
@@ -74,11 +76,27 @@ class InboxService
 
         foreach ($messages as $message) {
             try {
+                $uid = null;
+                try {
+                    $uid = (int) ($message->getUid() ?? 0);
+                } catch (\Exception $e) {
+                    $uid = null;
+                }
+
+                if ($uid && $uid <= $lastUid) {
+                    $skipped++;
+                    continue;
+                }
+
+                if ($uid && $uid > $maxUid) {
+                    $maxUid = $uid;
+                }
+
                 $header = $message->getHeader();
                 $fromAttr = $header->get('from');
                 $fromAddresses = $fromAttr->get();
                 $firstFrom = is_array($fromAddresses) ? ($fromAddresses[0] ?? null) : $fromAddresses;
-                $fromEmail = strtolower($firstFrom->full ?? ($firstFrom->mail ?? 'unknown@unknown'));
+                $fromEmail = strtolower(trim($firstFrom->mail ?? $firstFrom->full ?? 'unknown@unknown'));
                 $fromName = $firstFrom->personal ?? null;
 
                 Log::info('IMAP message from: ' . $fromEmail . ' subject: ' . ($message->getSubject() ?? '(none)'));
@@ -197,7 +215,10 @@ class InboxService
 
         $client->disconnect();
 
-        $smtp->update(['last_inbox_check_at' => now()]);
+        $smtp->update([
+            'last_inbox_check_at' => now(),
+            'last_imap_uid' => $maxUid > 0 ? $maxUid : null,
+        ]);
 
         if ($repliesFound > 0) {
             Cache::forget('dashboard.stats');

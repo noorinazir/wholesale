@@ -16,7 +16,7 @@ class SmtpSetting extends Model
         'last_test_success',
         'imap_host', 'imap_port', 'imap_encryption',
         'imap_username', 'imap_password',
-        'inbox_checking_enabled', 'last_inbox_check_at',
+        'inbox_checking_enabled', 'last_inbox_check_at', 'last_imap_uid',
     ];
 
     protected $hidden = ['password', 'imap_password'];
@@ -32,6 +32,7 @@ class SmtpSetting extends Model
             'imap_port' => 'integer',
             'inbox_checking_enabled' => 'boolean',
             'last_inbox_check_at' => 'datetime',
+            'last_imap_uid' => 'integer',
         ];
     }
 

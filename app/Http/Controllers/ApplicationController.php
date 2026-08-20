@@ -115,7 +115,7 @@ class ApplicationController extends Controller
         }
 
         $file = $request->file('document');
-        $path = $file->store('company-documents', 'public');
+        $path = $file->store('company-documents/' . $company->id, 'local');
 
         $doc = \App\Models\CompanyDocument::create([
             'company_id' => $company->id,
@@ -133,11 +133,33 @@ class ApplicationController extends Controller
     public function deleteCompanyDocument($id)
     {
         $doc = \App\Models\CompanyDocument::findOrFail($id);
-        Storage::disk('public')->delete($doc->file_path);
+
+        if (!Storage::disk('local')->exists($doc->file_path)) {
+            return back()->with('error', 'Document file was not found on disk.');
+        }
+
+        Storage::disk('local')->delete($doc->file_path);
         $doc->delete();
 
         $this->auditLog->log('deleted', 'Company Document', "{$doc->type}: {$doc->original_name}");
         return back()->with('status', 'Document deleted.');
+    }
+
+    public function downloadCompanyDocument(Request $request, $id)
+    {
+        abort_unless($request->hasValidSignature(), 403);
+
+        $doc = \App\Models\CompanyDocument::findOrFail($id);
+
+        if (!Storage::disk('local')->exists($doc->file_path)) {
+            abort(404, 'Document file not found.');
+        }
+
+        return Storage::disk('local')->download(
+            $doc->file_path,
+            $doc->original_name,
+            ['Content-Type' => $doc->mime_type]
+        );
     }
 
     // === Vendor Index ===
@@ -1467,7 +1489,10 @@ class ApplicationController extends Controller
     // === Notifications ===
     public function markNotificationRead($id)
     {
-        $notification = \App\Models\Notification::findOrFail($id);
+        $notification = \App\Models\Notification::where('id', $id)
+            ->where('user_id', auth()->id())
+            ->firstOrFail();
+
         $notification->update(['read_at' => now()]);
         return back();
     }
@@ -1484,39 +1509,57 @@ class ApplicationController extends Controller
         $q = $request->input('q', '');
         $results = [];
 
+        $user = auth()->user();
+        $canSearchVendors = $user?->can('manage-vendors') || $user?->can('view-vendors');
+        $canSearchCampaigns = $user?->can('manage-campaigns') || $user?->can('view-campaigns');
+        $canSearchEmails = $user?->can('manage-emails') || $user?->can('view-emails');
+
         if (strlen($q) >= 2) {
-            $vendors = Vendor::where('brand_name', 'like', "%{$q}%")
-                ->orWhere('company_name', 'like', "%{$q}%")
-                ->orWhere('contact_email', 'like', "%{$q}%")
-                ->limit(10)->get(['id', 'brand_name', 'company_name', 'contact_email']);
+            if ($canSearchVendors) {
+                $vendors = Vendor::where('brand_name', 'like', "%{$q}%")
+                    ->orWhere('company_name', 'like', "%{$q}%")
+                    ->orWhere('contact_email', 'like', "%{$q}%")
+                    ->limit(10)
+                    ->get(['id', 'brand_name', 'company_name', 'contact_email']);
 
-            foreach ($vendors as $vendor) {
-                $results[] = [
-                    'type' => 'Vendor',
-                    'label' => $vendor->brand_name,
-                    'sublabel' => $vendor->contact_email ?? $vendor->company_name,
-                    'url' => route('vendors.show', $vendor->id),
-                ];
+                foreach ($vendors as $vendor) {
+                    $results[] = [
+                        'type' => 'Vendor',
+                        'label' => $vendor->brand_name,
+                        'sublabel' => $vendor->contact_email ?? $vendor->company_name,
+                        'url' => route('vendors.show', $vendor->id),
+                    ];
+                }
             }
 
-            $campaigns = Campaign::where('name', 'like', "%{$q}%")->limit(5)->get(['id', 'name']);
-            foreach ($campaigns as $campaign) {
-                $results[] = [
-                    'type' => 'Campaign',
-                    'label' => $campaign->name,
-                    'sublabel' => 'Campaign',
-                    'url' => route('campaigns.show', $campaign->id),
-                ];
+            if ($canSearchCampaigns) {
+                $campaigns = Campaign::where('name', 'like', "%{$q}%")
+                    ->limit(5)
+                    ->get(['id', 'name']);
+
+                foreach ($campaigns as $campaign) {
+                    $results[] = [
+                        'type' => 'Campaign',
+                        'label' => $campaign->name,
+                        'sublabel' => 'Campaign',
+                        'url' => route('campaigns.show', $campaign->id),
+                    ];
+                }
             }
 
-            $emails = GeneratedEmail::where('subject', 'like', "%{$q}%")->limit(5)->get(['id', 'subject']);
-            foreach ($emails as $email) {
-                $results[] = [
-                    'type' => 'Email',
-                    'label' => $email->subject,
-                    'sublabel' => 'Generated Email',
-                    'url' => route('emails.preview', $email->id),
-                ];
+            if ($canSearchEmails) {
+                $emails = GeneratedEmail::where('subject', 'like', "%{$q}%")
+                    ->limit(5)
+                    ->get(['id', 'subject']);
+
+                foreach ($emails as $email) {
+                    $results[] = [
+                        'type' => 'Email',
+                        'label' => $email->subject,
+                        'sublabel' => 'Generated Email',
+                        'url' => route('emails.preview', $email->id),
+                    ];
+                }
             }
         }
 

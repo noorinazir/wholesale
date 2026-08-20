@@ -7,6 +7,7 @@ use App\Models\SystemSetting;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\Models\Permission;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Log;
 
 class DatabaseSeeder extends Seeder
 {
@@ -18,7 +19,10 @@ class DatabaseSeeder extends Seeder
         }
 
         // Create permissions and assign to roles
-        $permissions = ['manage-settings', 'manage-vendors', 'manage-campaigns', 'manage-emails', 'manage-finance', 'manage-products'];
+        $permissions = [
+            'manage-settings', 'manage-vendors', 'manage-campaigns', 'manage-emails', 'manage-finance', 'manage-products',
+            'view-vendors', 'view-campaigns', 'view-emails', 'view-finance', 'view-products', 'view-reports',
+        ];
         foreach ($permissions as $perm) {
             Permission::firstOrCreate(['name' => $perm]);
         }
@@ -29,24 +33,47 @@ class DatabaseSeeder extends Seeder
 
         // manager: everything except manage-settings
         $managerRole = Role::where('name', 'manager')->first();
-        $managerRole->syncPermissions(['manage-vendors', 'manage-campaigns', 'manage-emails', 'manage-finance', 'manage-products']);
+        $managerRole->syncPermissions([
+            'manage-vendors', 'manage-campaigns', 'manage-emails', 'manage-finance', 'manage-products',
+            'view-vendors', 'view-campaigns', 'view-emails', 'view-finance', 'view-products', 'view-reports',
+        ]);
 
         // staff: vendors, products, emails (no campaigns, no finance, no settings)
         $staffRole = Role::where('name', 'staff')->first();
-        $staffRole->syncPermissions(['manage-vendors', 'manage-products', 'manage-emails']);
+        $staffRole->syncPermissions([
+            'manage-vendors', 'manage-products', 'manage-emails',
+            'view-vendors', 'view-campaigns', 'view-emails', 'view-products', 'view-reports',
+        ]);
 
-        // viewer: read-only, no permissions (can view pages but cannot create/edit/delete)
+        // viewer: read-only access
+        $viewerRole = Role::where('name', 'viewer')->first();
+        $viewerRole->syncPermissions([
+            'view-vendors', 'view-campaigns', 'view-emails', 'view-finance', 'view-products', 'view-reports',
+        ]);
 
-        $admin = User::firstOrCreate(
-            ['email' => 'admin@wholesale.com'],
-            [
-                'name' => 'Administrator',
-                'password' => 'password',
-                'is_active' => true,
-                'role' => 'administrator',
-            ]
-        );
-        $admin->assignRole('administrator');
+        $bootstrapAdminEmail = env('BOOTSTRAP_ADMIN_EMAIL');
+        $bootstrapAdminPassword = env('BOOTSTRAP_ADMIN_PASSWORD');
+        $bootstrapAdminName = env('BOOTSTRAP_ADMIN_NAME', 'Administrator');
+
+        if (!empty($bootstrapAdminEmail) && !empty($bootstrapAdminPassword)) {
+            if (strlen($bootstrapAdminPassword) < 12) {
+                Log::warning('Skipped bootstrap admin creation: BOOTSTRAP_ADMIN_PASSWORD must be at least 12 characters.');
+            } else {
+                $admin = User::firstOrCreate(
+                    ['email' => $bootstrapAdminEmail],
+                    [
+                        'name' => $bootstrapAdminName,
+                        'password' => $bootstrapAdminPassword,
+                        'is_active' => true,
+                        'role' => 'administrator',
+                    ]
+                );
+
+                if (!$admin->hasRole('administrator')) {
+                    $admin->assignRole('administrator');
+                }
+            }
+        }
 
         SystemSetting::firstOrCreate(['key' => 'sending_paused'], ['value' => '0', 'group' => 'sending']);
         SystemSetting::firstOrCreate(['key' => 'daily_email_limit'], ['value' => '50', 'group' => 'sending']);

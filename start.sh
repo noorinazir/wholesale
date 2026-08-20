@@ -101,8 +101,11 @@ php artisan optimize:clear 2>/dev/null || true
 php artisan config:cache
 php artisan route:cache
 
-# Start queue worker in background
-php artisan queue:work --daemon --tries=3 --sleep=3 > /dev/null 2>&1 &
+# Start queue worker in background with persistent logs + PID for supervision
+mkdir -p storage/logs
+echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] starting queue worker" >> storage/logs/queue-worker.log
+php artisan queue:work --daemon --tries=3 --sleep=3 --timeout=120 >> storage/logs/queue-worker.log 2>&1 &
+echo $! > storage/logs/queue-worker.pid
 
 # Start Apache in foreground
 apache2-foreground

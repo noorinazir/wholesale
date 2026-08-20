@@ -16,6 +16,7 @@ use App\Services\AmazonSyncService;
 use App\Models\SystemSetting;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class FinanceController extends Controller
 {
@@ -799,80 +800,89 @@ class FinanceController extends Controller
             }
 
             try {
-                $product = null;
-                if (!empty($row['product_id'])) {
-                    $product = Product::find($row['product_id']);
+                $created = DB::transaction(function () use ($row, $idx, $batchId, &$errors) {
+                    $product = null;
+                    if (!empty($row['product_id'])) {
+                        $product = Product::find($row['product_id']);
+                    }
+
+                    $productName = $row['product_name'] ?? ($product?->product_name ?? 'Unknown');
+                    $asin = $row['asin'] ?? ($product?->asin ?? null);
+                    $quantity = (int)($row['quantity'] ?? 1);
+                    $salePrice = (float)($row['sale_price'] ?? ($product ? (float)$product->amazon_sell_price : 0));
+                    $totalRevenue = $salePrice * $quantity;
+                    $orderDate = $row['order_date'] ?? date('Y-m-d');
+                    $fulfillment = strtoupper($row['fulfillment_channel'] ?? 'FBA');
+                    if (!in_array($fulfillment, ['FBA', 'FBM'])) $fulfillment = 'FBA';
+
+                    $productCost = (float)($row['product_cost'] ?? ($product ? (float)$product->buying_price * $quantity : 0));
+                    $fbaFee = (float)($row['fba_fee'] ?? ($product ? (float)$product->fba_fee * $quantity : 0));
+                    $shippingCost = (float)($row['shipping_cost'] ?? ($product ? (float)$product->shipping_cost * $quantity : 0));
+                    $labelingCost = (float)($row['labeling_cost'] ?? ($product ? (float)$product->labeling_cost * $quantity : 0));
+                    $otherCosts = (float)($row['other_costs'] ?? ($product ? (float)$product->other_costs * $quantity : 0));
+                    $operationCost = (float)($row['operation_cost'] ?? ($product ? (float)($product->operation_cost ?? 0) * $quantity : 0));
+
+                    $taxState = strtoupper(substr($row['tax_state'] ?? '', 0, 2));
+                    $taxData = ['rate' => 0, 'amount' => 0];
+                    if (!empty($taxState) && strlen($taxState) === 2) {
+                        $taxData = AmazonOrder::calculateTax($totalRevenue, $taxState);
+                    }
+
+                    $amazonOrderId = $row['amazon_order_id'] ?? null;
+                    if ($amazonOrderId && AmazonOrder::where('amazon_order_id', $amazonOrderId)->exists()) {
+                        $errors[] = "Row " . ($idx + 1) . ": duplicate order ID {$amazonOrderId}";
+                        return false;
+                    }
+
+                    $poId = null;
+                    if ($product) {
+                        $po = PurchaseOrder::where('vendor_id', $product->vendor_id)
+                            ->whereIn('status', ['confirmed', 'partial_received', 'in_production', 'shipped'])
+                            ->latest()
+                            ->first();
+                        $poId = $po?->id;
+                    }
+
+                    $orderStatus = $row['order_status'] ?? 'delivered';
+
+                    $order = AmazonOrder::create([
+                        'amazon_order_id' => $amazonOrderId,
+                        'product_id' => $product?->id,
+                        'vendor_id' => $product?->vendor_id,
+                        'purchase_order_id' => $poId,
+                        'product_name' => $productName,
+                        'asin' => $asin,
+                        'fulfillment_channel' => $fulfillment,
+                        'amazon_marketplace' => 'US',
+                        'order_date' => $orderDate,
+                        'order_status' => $orderStatus,
+                        'quantity' => $quantity,
+                        'sale_price' => $salePrice,
+                        'total_revenue' => $totalRevenue,
+                        'product_cost' => $productCost,
+                        'fba_fee' => $fbaFee,
+                        'amazon_referral_fee' => 0,
+                        'shipping_cost' => $shippingCost,
+                        'labeling_cost' => $labelingCost,
+                        'other_costs' => $otherCosts,
+                        'operation_cost' => $operationCost,
+                        'tax_state' => $taxState ?: null,
+                        'tax_rate' => $taxData['rate'],
+                        'batch_id' => $batchId,
+                    ]);
+
+                    $order->recalculate();
+
+                    if ($product && $this->isStockDeductingStatus($orderStatus)) {
+                        $product->adjustStock($quantity, 'subtract');
+                    }
+
+                    return true;
+                });
+
+                if ($created) {
+                    $imported++;
                 }
-
-                $productName = $row['product_name'] ?? ($product?->product_name ?? 'Unknown');
-                $asin = $row['asin'] ?? ($product?->asin ?? null);
-                $quantity = (int)($row['quantity'] ?? 1);
-                $salePrice = (float)($row['sale_price'] ?? ($product ? (float)$product->amazon_sell_price : 0));
-                $totalRevenue = $salePrice * $quantity;
-                $orderDate = $row['order_date'] ?? date('Y-m-d');
-                $fulfillment = strtoupper($row['fulfillment_channel'] ?? 'FBA');
-                if (!in_array($fulfillment, ['FBA', 'FBM'])) $fulfillment = 'FBA';
-
-                $productCost = (float)($row['product_cost'] ?? ($product ? (float)$product->buying_price * $quantity : 0));
-                $fbaFee = (float)($row['fba_fee'] ?? ($product ? (float)$product->fba_fee * $quantity : 0));
-                $shippingCost = (float)($row['shipping_cost'] ?? ($product ? (float)$product->shipping_cost * $quantity : 0));
-                $labelingCost = (float)($row['labeling_cost'] ?? ($product ? (float)$product->labeling_cost * $quantity : 0));
-                $otherCosts = (float)($row['other_costs'] ?? ($product ? (float)$product->other_costs * $quantity : 0));
-                $operationCost = (float)($row['operation_cost'] ?? ($product ? (float)($product->operation_cost ?? 0) * $quantity : 0));
-
-                $taxState = strtoupper(substr($row['tax_state'] ?? '', 0, 2));
-                $taxData = ['rate' => 0, 'amount' => 0];
-                if (!empty($taxState) && strlen($taxState) === 2) {
-                    $taxData = AmazonOrder::calculateTax($totalRevenue, $taxState);
-                }
-
-                $amazonOrderId = $row['amazon_order_id'] ?? null;
-                if ($amazonOrderId && AmazonOrder::where('amazon_order_id', $amazonOrderId)->exists()) {
-                    $errors[] = "Row " . ($idx + 1) . ": duplicate order ID {$amazonOrderId}";
-                    continue;
-                }
-
-                $poId = null;
-                if ($product) {
-                    $po = PurchaseOrder::where('vendor_id', $product->vendor_id)
-                        ->whereIn('status', ['confirmed', 'partial_received', 'in_production', 'shipped'])
-                        ->latest()->first();
-                    $poId = $po?->id;
-                }
-
-                $order = AmazonOrder::create([
-                    'amazon_order_id' => $amazonOrderId,
-                    'product_id' => $product?->id,
-                    'vendor_id' => $product?->vendor_id,
-                    'purchase_order_id' => $poId,
-                    'product_name' => $productName,
-                    'asin' => $asin,
-                    'fulfillment_channel' => $fulfillment,
-                    'amazon_marketplace' => 'US',
-                    'order_date' => $orderDate,
-                    'order_status' => $row['order_status'] ?? 'delivered',
-                    'quantity' => $quantity,
-                    'sale_price' => $salePrice,
-                    'total_revenue' => $totalRevenue,
-                    'product_cost' => $productCost,
-                    'fba_fee' => $fbaFee,
-                    'amazon_referral_fee' => 0,
-                    'shipping_cost' => $shippingCost,
-                    'labeling_cost' => $labelingCost,
-                    'other_costs' => $otherCosts,
-                    'operation_cost' => $operationCost,
-                    'tax_state' => $taxState ?: null,
-                    'tax_rate' => $taxData['rate'],
-                    'batch_id' => $batchId,
-                ]);
-
-                $order->recalculate();
-
-                if ($product) {
-                    $product->adjustStock($quantity, 'subtract');
-                }
-
-                $imported++;
             } catch (\Exception $e) {
                 $errors[] = "Row " . ($idx + 1) . ": " . $e->getMessage();
             }
@@ -953,53 +963,56 @@ class FinanceController extends Controller
             $taxData = AmazonOrder::calculateTax($totalRevenue, $validated['tax_state']);
         }
 
-        $order = AmazonOrder::create([
-            'amazon_order_id' => $validated['amazon_order_id'] ?? null,
-            'product_id' => $validated['product_id'] ?? null,
-            'vendor_id' => $validated['vendor_id'] ?? null,
-            'purchase_order_id' => $purchaseOrderId,
-            'product_name' => $validated['product_name'],
-            'asin' => $validated['asin'] ?? null,
-            'upc' => $validated['upc'] ?? null,
-            'sku' => $validated['sku'] ?? null,
-            'fulfillment_channel' => $validated['fulfillment_channel'] ?? 'FBA',
-            'amazon_marketplace' => $validated['amazon_marketplace'] ?? 'US',
-            'order_date' => $validated['order_date'],
-            'ship_date' => $validated['ship_date'] ?? null,
-            'delivery_date' => $validated['delivery_date'] ?? null,
-            'order_status' => $validated['order_status'],
-            'quantity' => $quantity,
-            'sale_price' => $salePrice,
-            'total_revenue' => $totalRevenue,
-            'product_cost' => $productCost * $quantity,
-            'fba_fee' => $fbaFee * $quantity,
-            'amazon_referral_fee' => 0,
-            'shipping_cost' => $shippingCost * $quantity,
-            'labeling_cost' => $labelingCost * $quantity,
-            'other_costs' => $otherCosts * $quantity,
-            'operation_cost' => $operationCost * $quantity,
-            'advertising_cost' => $advertisingCost * $quantity,
-            'return_cost' => $returnCost * $quantity,
-            'breakaway_referral_rate' => $referralRate,
-            'tax_collected' => $taxData['amount'],
-            'tax_rate' => $taxData['rate'],
-            'tax_state' => $validated['tax_state'] ?? null,
-            'customer_name' => $validated['customer_name'] ?? null,
-            'customer_state' => $validated['customer_state'] ?? null,
-            'customer_city' => $validated['customer_city'] ?? null,
-            'customer_zip' => $validated['customer_zip'] ?? null,
-            'notes' => $validated['notes'] ?? null,
-        ]);
+        $order = DB::transaction(function () use ($validated, $purchaseOrderId, $quantity, $salePrice, $totalRevenue, $productCost, $fbaFee, $shippingCost, $labelingCost, $otherCosts, $operationCost, $advertisingCost, $returnCost, $referralRate, $taxData) {
+            $order = AmazonOrder::create([
+                'amazon_order_id' => $validated['amazon_order_id'] ?? null,
+                'product_id' => $validated['product_id'] ?? null,
+                'vendor_id' => $validated['vendor_id'] ?? null,
+                'purchase_order_id' => $purchaseOrderId,
+                'product_name' => $validated['product_name'],
+                'asin' => $validated['asin'] ?? null,
+                'upc' => $validated['upc'] ?? null,
+                'sku' => $validated['sku'] ?? null,
+                'fulfillment_channel' => $validated['fulfillment_channel'] ?? 'FBA',
+                'amazon_marketplace' => $validated['amazon_marketplace'] ?? 'US',
+                'order_date' => $validated['order_date'],
+                'ship_date' => $validated['ship_date'] ?? null,
+                'delivery_date' => $validated['delivery_date'] ?? null,
+                'order_status' => $validated['order_status'],
+                'quantity' => $quantity,
+                'sale_price' => $salePrice,
+                'total_revenue' => $totalRevenue,
+                'product_cost' => $productCost * $quantity,
+                'fba_fee' => $fbaFee * $quantity,
+                'amazon_referral_fee' => 0,
+                'shipping_cost' => $shippingCost * $quantity,
+                'labeling_cost' => $labelingCost * $quantity,
+                'other_costs' => $otherCosts * $quantity,
+                'operation_cost' => $operationCost * $quantity,
+                'advertising_cost' => $advertisingCost * $quantity,
+                'return_cost' => $returnCost * $quantity,
+                'breakaway_referral_rate' => $referralRate,
+                'tax_collected' => $taxData['amount'],
+                'tax_rate' => $taxData['rate'],
+                'tax_state' => $validated['tax_state'] ?? null,
+                'customer_name' => $validated['customer_name'] ?? null,
+                'customer_state' => $validated['customer_state'] ?? null,
+                'customer_city' => $validated['customer_city'] ?? null,
+                'customer_zip' => $validated['customer_zip'] ?? null,
+                'notes' => $validated['notes'] ?? null,
+            ]);
 
-        $order->recalculate();
+            $order->recalculate();
 
-        // Auto-deduct stock if product is linked
-        if ($order->product_id) {
-            $product = Product::find($order->product_id);
-            if ($product) {
-                $product->adjustStock($order->quantity, 'subtract');
+            if ($order->product_id && $this->isStockDeductingStatus($order->order_status)) {
+                $product = Product::find($order->product_id);
+                if ($product) {
+                    $product->adjustStock($order->quantity, 'subtract');
+                }
             }
-        }
+
+            return $order;
+        });
 
         $this->auditLog->log('created', 'AmazonOrder', $order->product_name);
         return redirect()->route('finance.sales.index')->with('status', 'Sales order recorded.');
@@ -1007,54 +1020,42 @@ class FinanceController extends Controller
 
     public function salesUpdateStatus(Request $request, $id)
     {
-        $order = AmazonOrder::findOrFail($id);
         $validated = $request->validate([
             'order_status' => 'required|in:pending,processing,shipped,delivered,returned,refunded,cancelled',
         ]);
 
-        $order->update(['order_status' => $validated['order_status']]);
+        $order = DB::transaction(function () use ($id, $validated) {
+            $order = AmazonOrder::lockForUpdate()->findOrFail($id);
+            $oldStatus = $order->order_status;
+            $newStatus = $validated['order_status'];
 
-        if (in_array($validated['order_status'], ['shipped']) && !$order->ship_date) {
-            $order->update(['ship_date' => now()]);
-        }
-        if (in_array($validated['order_status'], ['delivered']) && !$order->delivery_date) {
-            $order->update(['delivery_date' => now()]);
-        }
-
-        // If returned/refunded: restock, auto-calculate return cost, recalculate profit
-        if (in_array($validated['order_status'], ['returned', 'refunded']) && $order->product_id) {
-            $product = Product::find($order->product_id);
-            if ($product) {
-                $product->adjustStock($order->quantity, 'add');
+            $updates = ['order_status' => $newStatus];
+            if ($newStatus === 'shipped' && !$order->ship_date) {
+                $updates['ship_date'] = now();
+            }
+            if ($newStatus === 'delivered' && !$order->delivery_date) {
+                $updates['delivery_date'] = now();
             }
 
-            // Auto-set return_cost if not already set (estimated: return shipping + restocking)
-            if ((float)$order->return_cost <= 0) {
-                $returnShipping = (float)$order->shipping_cost; // return shipping ≈ outbound shipping
-                $restockingFee = (float)$order->fba_fee * 0.5; // Amazon charges ~50% FBA fee for returns
+            $order->update($updates);
+
+            if (in_array($newStatus, ['returned', 'refunded'])
+                && !in_array($oldStatus, ['returned', 'refunded'])
+                && (float)$order->return_cost <= 0
+            ) {
+                $returnShipping = (float)$order->shipping_cost;
+                $restockingFee = (float)$order->fba_fee * 0.5;
                 $order->update(['return_cost' => round($returnShipping + $restockingFee, 2)]);
             }
-        }
 
-        // If cancelled: restock (stock was deducted at sale creation)
-        if ($validated['order_status'] === 'cancelled' && $order->product_id) {
-            $product = Product::find($order->product_id);
-            if ($product) {
-                $product->adjustStock($order->quantity, 'add');
-            }
-        }
+            $this->syncStockForStatusTransition($order, $oldStatus, $newStatus);
 
-        // If status changes FROM cancelled/returned/refunded back to active: re-deduct stock
-        if (in_array($validated['order_status'], ['pending', 'processing', 'shipped', 'delivered'])
-            && in_array($order->getOriginal('order_status'), ['cancelled', 'returned', 'refunded'])
-            && $order->product_id) {
-            $product = Product::find($order->product_id);
-            if ($product) {
-                $product->adjustStock($order->quantity, 'subtract');
-            }
-        }
+            $order->refresh();
+            $order->recalculate();
 
-        $order->recalculate();
+            return $order;
+        });
+
         $this->auditLog->log('updated', 'AmazonOrder', "Order #{$order->id} → {$validated['order_status']}");
         return back()->with('status', 'Order status updated.');
     }
@@ -1138,54 +1139,83 @@ class FinanceController extends Controller
             $taxData = AmazonOrder::calculateTax($totalRevenue, $validated['tax_state']);
         }
 
-        $order->update([
-            'amazon_order_id' => $validated['amazon_order_id'] ?? null,
-            'product_id' => $validated['product_id'] ?? null,
-            'vendor_id' => $validated['vendor_id'] ?? null,
-            'product_name' => $validated['product_name'],
-            'asin' => $validated['asin'] ?? null,
-            'fulfillment_channel' => $validated['fulfillment_channel'] ?? 'FBA',
-            'order_date' => $validated['order_date'],
-            'ship_date' => $validated['ship_date'] ?? null,
-            'delivery_date' => $validated['delivery_date'] ?? null,
-            'order_status' => $validated['order_status'],
-            'quantity' => $quantity,
-            'sale_price' => $validated['sale_price'],
-            'total_revenue' => $totalRevenue,
-            'product_cost' => ($validated['product_cost'] ?? 0) * $quantity,
-            'fba_fee' => ($validated['fba_fee'] ?? 0) * $quantity,
-            'amazon_referral_fee' => 0,
-            'breakaway_referral_rate' => $referralRate,
-            'shipping_cost' => ($validated['shipping_cost'] ?? 0) * $quantity,
-            'labeling_cost' => ($validated['labeling_cost'] ?? 0) * $quantity,
-            'other_costs' => ($validated['other_costs'] ?? 0) * $quantity,
-            'operation_cost' => ($validated['operation_cost'] ?? 0) * $quantity,
-            'advertising_cost' => ($validated['advertising_cost'] ?? 0) * $quantity,
-            'return_cost' => ($validated['return_cost'] ?? 0) * $quantity,
-            'tax_collected' => $taxData['amount'],
-            'tax_rate' => $taxData['rate'],
-            'tax_state' => $validated['tax_state'] ?? null,
-            'customer_name' => $validated['customer_name'] ?? null,
-            'customer_state' => $validated['customer_state'] ?? null,
-            'customer_city' => $validated['customer_city'] ?? null,
-            'customer_zip' => $validated['customer_zip'] ?? null,
-            'notes' => $validated['notes'] ?? null,
-        ]);
+        DB::transaction(function () use ($order, $validated, $quantity, $totalRevenue, $referralRate, $taxData) {
+            $oldProductId = $order->product_id;
+            $oldQuantity = (int) $order->quantity;
+            $oldStatus = $order->order_status;
 
-        $order->recalculate();
+            $order->update([
+                'amazon_order_id' => $validated['amazon_order_id'] ?? null,
+                'product_id' => $validated['product_id'] ?? null,
+                'vendor_id' => $validated['vendor_id'] ?? null,
+                'product_name' => $validated['product_name'],
+                'asin' => $validated['asin'] ?? null,
+                'fulfillment_channel' => $validated['fulfillment_channel'] ?? 'FBA',
+                'order_date' => $validated['order_date'],
+                'ship_date' => $validated['ship_date'] ?? null,
+                'delivery_date' => $validated['delivery_date'] ?? null,
+                'order_status' => $validated['order_status'],
+                'quantity' => $quantity,
+                'sale_price' => $validated['sale_price'],
+                'total_revenue' => $totalRevenue,
+                'product_cost' => ($validated['product_cost'] ?? 0) * $quantity,
+                'fba_fee' => ($validated['fba_fee'] ?? 0) * $quantity,
+                'amazon_referral_fee' => 0,
+                'breakaway_referral_rate' => $referralRate,
+                'shipping_cost' => ($validated['shipping_cost'] ?? 0) * $quantity,
+                'labeling_cost' => ($validated['labeling_cost'] ?? 0) * $quantity,
+                'other_costs' => ($validated['other_costs'] ?? 0) * $quantity,
+                'operation_cost' => ($validated['operation_cost'] ?? 0) * $quantity,
+                'advertising_cost' => ($validated['advertising_cost'] ?? 0) * $quantity,
+                'return_cost' => ($validated['return_cost'] ?? 0) * $quantity,
+                'tax_collected' => $taxData['amount'],
+                'tax_rate' => $taxData['rate'],
+                'tax_state' => $validated['tax_state'] ?? null,
+                'customer_name' => $validated['customer_name'] ?? null,
+                'customer_state' => $validated['customer_state'] ?? null,
+                'customer_city' => $validated['customer_city'] ?? null,
+                'customer_zip' => $validated['customer_zip'] ?? null,
+                'notes' => $validated['notes'] ?? null,
+            ]);
 
-        // Adjust stock for quantity difference if product is linked and order is active
-        if ($order->product_id && !in_array($validated['order_status'], ['cancelled', 'returned', 'refunded'])) {
-            $oldQty = $order->getOriginal('quantity');
-            $newQty = $quantity;
-            $diff = $newQty - $oldQty;
-            if ($diff != 0) {
-                $product = Product::find($order->product_id);
+            $order->recalculate();
+
+            $newProductId = $order->product_id;
+            $newQuantity = (int) $order->quantity;
+            $newStatus = $order->order_status;
+            $oldDeducts = $this->isStockDeductingStatus($oldStatus);
+            $newDeducts = $this->isStockDeductingStatus($newStatus);
+
+            if ($oldProductId && $newProductId && $oldProductId === $newProductId) {
+                $product = Product::find($newProductId);
                 if ($product) {
-                    $product->adjustStock(abs($diff), $diff > 0 ? 'subtract' : 'add');
+                    if ($oldDeducts && $newDeducts) {
+                        $diff = $newQuantity - $oldQuantity;
+                        if ($diff !== 0) {
+                            $product->adjustStock(abs($diff), $diff > 0 ? 'subtract' : 'add');
+                        }
+                    } elseif ($oldDeducts && !$newDeducts) {
+                        $product->adjustStock($oldQuantity, 'add');
+                    } elseif (!$oldDeducts && $newDeducts) {
+                        $product->adjustStock($newQuantity, 'subtract');
+                    }
+                }
+            } else {
+                if ($oldProductId && $oldDeducts) {
+                    $oldProduct = Product::find($oldProductId);
+                    if ($oldProduct) {
+                        $oldProduct->adjustStock($oldQuantity, 'add');
+                    }
+                }
+
+                if ($newProductId && $newDeducts) {
+                    $newProduct = Product::find($newProductId);
+                    if ($newProduct) {
+                        $newProduct->adjustStock($newQuantity, 'subtract');
+                    }
                 }
             }
-        }
+        });
 
         $this->auditLog->log('updated', 'AmazonOrder', "Order #{$order->id} edited");
         return redirect()->route('finance.sales.show', $order->id)->with('status', 'Sale updated.');
@@ -1214,6 +1244,32 @@ class FinanceController extends Controller
                 ]);
             }
         }
+    }
+
+    private function isStockDeductingStatus(?string $status): bool
+    {
+        return in_array((string) $status, ['pending', 'processing', 'shipped', 'delivered'], true);
+    }
+
+    private function syncStockForStatusTransition(AmazonOrder $order, ?string $oldStatus, ?string $newStatus): void
+    {
+        if (!$order->product_id) {
+            return;
+        }
+
+        $oldDeducts = $this->isStockDeductingStatus($oldStatus);
+        $newDeducts = $this->isStockDeductingStatus($newStatus);
+
+        if ($oldDeducts === $newDeducts) {
+            return;
+        }
+
+        $product = Product::find($order->product_id);
+        if (!$product) {
+            return;
+        }
+
+        $product->adjustStock($order->quantity, $newDeducts ? 'subtract' : 'add');
     }
 
     // === Expenses ===

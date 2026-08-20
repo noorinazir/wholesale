@@ -55,10 +55,15 @@ npm run build
 php artisan serve
 ```
 
-## Default Login
+## Initial Admin Bootstrap
 
-- **Email**: admin@wholesale.com
-- **Password**: password
+No default admin credentials are seeded.
+
+Set these environment variables before running `php artisan db:seed` to create the first administrator account:
+
+- `BOOTSTRAP_ADMIN_EMAIL`
+- `BOOTSTRAP_ADMIN_PASSWORD` (minimum 12 characters)
+- `BOOTSTRAP_ADMIN_NAME` (optional, defaults to `Administrator`)
 
 ## Queue & Scheduler
 

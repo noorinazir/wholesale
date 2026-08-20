@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Mail\Mailables\Address;
 use App\Mail\VendorOutreachMail;
 use App\Services\FollowUpService;
@@ -179,6 +180,42 @@ class EmailSendingService
         return $query->exists();
     }
 
+    public function claimNextQueueItem(): ?EmailQueue
+    {
+        return DB::transaction(function () {
+            $item = EmailQueue::where('status', 'scheduled')
+                ->where('scheduled_at', '<=', now())
+                ->orderBy('scheduled_at')
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->first();
+
+            if (!$item) {
+                $item = EmailQueue::where('status', 'pending')
+                    ->orderBy('id')
+                    ->lockForUpdate()
+                    ->first();
+            }
+
+            if (!$item) {
+                return null;
+            }
+
+            $updated = EmailQueue::whereKey($item->id)
+                ->whereIn('status', ['pending', 'scheduled'])
+                ->update([
+                    'status' => 'sending',
+                    'attempts' => $item->attempts + 1,
+                ]);
+
+            if ($updated === 0) {
+                return null;
+            }
+
+            return EmailQueue::with(['vendor', 'campaign'])->find($item->id);
+        }, 3);
+    }
+
     public function configureSmtp(): ?SmtpSetting
     {
         $smtp = SmtpSetting::where('is_active', true)->first();
@@ -215,13 +252,27 @@ class EmailSendingService
 
     public function sendQueueItem(EmailQueue $item): array
     {
+        if ($item->status !== 'sending') {
+            $claimed = EmailQueue::whereKey($item->id)
+                ->whereIn('status', ['pending', 'scheduled'])
+                ->update([
+                    'status' => 'sending',
+                    'attempts' => $item->attempts + 1,
+                ]);
+
+            if ($claimed === 0) {
+                return ['success' => false, 'error' => 'Queue item is already being processed'];
+            }
+
+            $item->refresh();
+        }
+
         $smtp = $this->configureSmtp();
 
         if (!$smtp) {
             $item->update([
                 'status' => 'failed',
                 'last_error' => 'No active SMTP configuration found',
-                'attempts' => $item->attempts + 1,
             ]);
 
             $this->createLog($item, 'failed', null, 'No active SMTP configuration found');
@@ -234,8 +285,6 @@ class EmailSendingService
             $recipient = $this->getTestModeRecipient() ?? 'admin@example.com';
             Log::info("Test mode: redirecting email from {$item->recipient_email} to {$recipient}");
         }
-
-        $item->update(['status' => 'sending', 'attempts' => $item->attempts + 1]);
 
         try {
             $mailable = new VendorOutreachMail($item->subject, $item->body, $smtp);

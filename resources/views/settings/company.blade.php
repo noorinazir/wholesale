@@ -4,8 +4,8 @@
     </x-slot>
 
     @php
-    $company = \App\Models\Company::where('is_active', true)->first() ?? new \App\Models\Company();
-    $documents = $company->exists ? $company->documents()->orderBy('type')->get() : collect();
+    $company = $companyProfile ?? new \App\Models\Company();
+    $documents = $companyDocuments ?? collect();
     $docTypes = [
         'resell_tax_id' => 'Resale Tax ID',
         'ein' => 'EIN Document',

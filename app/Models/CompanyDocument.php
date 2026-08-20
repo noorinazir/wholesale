@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\URL;
 
 class CompanyDocument extends Model
 {
@@ -21,6 +22,10 @@ class CompanyDocument extends Model
 
     public function getUrlAttribute(): string
     {
-        return asset('storage/' . $this->file_path);
+        return URL::temporarySignedRoute(
+            'settings.company.download-document',
+            now()->addMinutes(15),
+            ['id' => $this->id]
+        );
     }
 }

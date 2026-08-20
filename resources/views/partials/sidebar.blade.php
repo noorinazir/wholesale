@@ -1,10 +1,3 @@
-@php
-$sendingService = app(\App\Services\EmailSendingService::class);
-$sendingPaused = $sendingService->isSendingPaused();
-$unreadNotifications = \App\Models\Notification::where('user_id', auth()->id())->whereNull('read_at')->orderBy('created_at', 'desc')->limit(10)->get();
-$unreadCount = $unreadNotifications->count();
-@endphp
-
 <div x-data="{ sidebarOpen: false, collapsed: { vendors: {{ request()->routeIs('vendors.*') || request()->routeIs('products.*') || request()->routeIs('suppression.*') ? 'false' : 'true' }}, finance: {{ request()->routeIs('finance.*') ? 'false' : 'true' }}, campaigns: {{ request()->routeIs('campaigns.*') ? 'false' : 'true' }}, emails: {{ request()->routeIs('emails.*') ? 'false' : 'true' }}, tools: {{ request()->routeIs('ai-assistant') || request()->routeIs('templates.*') || request()->routeIs('analytics') || request()->routeIs('reports.*') ? 'false' : 'true' }}, system: {{ request()->routeIs('settings.*') ? 'false' : 'true' }} }, showNotifications: false, searchQuery: '', searchResults: [], searching: false }" class="flex">
     <div x-show="sidebarOpen" x-cloak class="fixed inset-0 z-30 bg-black/50 lg:hidden" @click="sidebarOpen = false"></div>
 
@@ -106,7 +99,7 @@ $unreadCount = $unreadNotifications->count();
                 </x-sidebar-link>
             </div>
 
-            @can('manage-finance')
+            @canany(['manage-finance', 'view-finance'])
             <button @click="collapsed.finance = !collapsed.finance" class="w-full flex items-center justify-between pt-3 px-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider hover:text-gray-600 dark:hover:text-gray-300">
                 <span>Finance</span>
                 <svg class="w-3 h-3 transition-transform" :class="collapsed.finance ? '-rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
@@ -134,9 +127,9 @@ $unreadCount = $unreadNotifications->count();
                     Tax Rates
                 </x-sidebar-link>
             </div>
-            @endcan
+            @endcanany
 
-            @can('manage-campaigns')
+            @canany(['manage-campaigns', 'view-campaigns'])
             <button @click="collapsed.campaigns = !collapsed.campaigns" class="w-full flex items-center justify-between pt-3 px-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider hover:text-gray-600 dark:hover:text-gray-300">
                 <span>Campaigns</span>
                 <svg class="w-3 h-3 transition-transform" :class="collapsed.campaigns ? '-rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
@@ -146,9 +139,9 @@ $unreadCount = $unreadNotifications->count();
                     Campaigns
                 </x-sidebar-link>
             </div>
-            @endcan
+            @endcanany
 
-            @can('manage-emails')
+            @canany(['manage-emails', 'view-emails'])
             <button @click="collapsed.emails = !collapsed.emails" class="w-full flex items-center justify-between pt-3 px-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider hover:text-gray-600 dark:hover:text-gray-300">
                 <span>Emails</span>
                 <svg class="w-3 h-3 transition-transform" :class="collapsed.emails ? '-rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
@@ -173,28 +166,32 @@ $unreadCount = $unreadNotifications->count();
                     History
                 </x-sidebar-link>
             </div>
-            @endcan
+            @endcanany
 
-            @can('manage-emails')
+            @canany(['manage-emails', 'view-emails', 'view-reports'])
             <button @click="collapsed.tools = !collapsed.tools" class="w-full flex items-center justify-between pt-3 px-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider hover:text-gray-600 dark:hover:text-gray-300">
                 <span>Tools</span>
                 <svg class="w-3 h-3 transition-transform" :class="collapsed.tools ? '-rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
             </button>
             <div x-show="!collapsed.tools" x-transition class="space-y-0.5">
+                @canany(['manage-emails', 'view-emails'])
                 <x-sidebar-link :href="route('ai-assistant')" :active="request()->routeIs('ai-assistant')" icon="sparkles">
                     AI Assistant
                 </x-sidebar-link>
                 <x-sidebar-link :href="route('templates.index')" :active="request()->routeIs('templates.*')" icon="template">
                     Templates
                 </x-sidebar-link>
+                @endcanany
+                @can('view-reports')
                 <x-sidebar-link :href="route('analytics')" :active="request()->routeIs('analytics')" icon="chart-bar">
                     Analytics
                 </x-sidebar-link>
                 <x-sidebar-link :href="route('reports.index')" :active="request()->routeIs('reports.*')" icon="chart">
                     Reports
                 </x-sidebar-link>
+                @endcan
             </div>
-            @endcan
+            @endcanany
 
             @can('manage-settings')
             <button @click="collapsed.system = !collapsed.system" class="w-full flex items-center justify-between pt-3 px-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider hover:text-gray-600 dark:hover:text-gray-300">

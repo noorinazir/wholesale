@@ -3,20 +3,78 @@
 namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\View;
+use App\Models\Notification;
+use App\Models\Campaign;
+use App\Models\Company;
+use App\Models\EmailTemplate;
+use App\Models\Product;
+use App\Models\SmtpSetting;
+use App\Models\Vendor;
+use App\Policies\CampaignPolicy;
+use App\Policies\EmailTemplatePolicy;
+use App\Policies\NotificationPolicy;
+use App\Policies\ProductPolicy;
+use App\Policies\VendorPolicy;
+use App\Services\EmailSendingService;
 
 class AppServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
         $this->app->bind(\App\Services\AI\KimiService::class, function ($app) {
-            \App\Models\SystemSetting::flushCache();
             return new \App\Services\AI\KimiService();
         });
     }
 
     public function boot(): void
     {
-        // Authorization is handled entirely by Spatie Permission package.
-        // Permissions are seeded in DatabaseSeeder and assigned to roles there.
+        Gate::policy(Notification::class, NotificationPolicy::class);
+        Gate::policy(Campaign::class, CampaignPolicy::class);
+        Gate::policy(EmailTemplate::class, EmailTemplatePolicy::class);
+        Gate::policy(Product::class, ProductPolicy::class);
+        Gate::policy(Vendor::class, VendorPolicy::class);
+
+        View::composer('partials.sidebar', function ($view) {
+            $user = auth()->user();
+            $sendingService = app(EmailSendingService::class);
+
+            $unreadNotifications = collect();
+            $unreadCount = 0;
+
+            if ($user) {
+                $unreadNotifications = Notification::where('user_id', $user->id)
+                    ->whereNull('read_at')
+                    ->orderBy('created_at', 'desc')
+                    ->limit(10)
+                    ->get();
+
+                $unreadCount = $unreadNotifications->count();
+            }
+
+            $view->with([
+                'sendingService' => $sendingService,
+                'sendingPaused' => $sendingService->isSendingPaused(),
+                'unreadNotifications' => $unreadNotifications,
+                'unreadCount' => $unreadCount,
+            ]);
+        });
+
+        View::composer('settings.company', function ($view) {
+            $company = Company::where('is_active', true)->first() ?? new Company();
+            $documents = $company->exists
+                ? $company->documents()->orderBy('type')->get()
+                : collect();
+
+            $view->with([
+                'companyProfile' => $company,
+                'companyDocuments' => $documents,
+            ]);
+        });
+
+        View::composer('settings.smtp', function ($view) {
+            $view->with('activeSmtpSetting', SmtpSetting::where('is_active', true)->first() ?? new SmtpSetting());
+        });
     }
 }
