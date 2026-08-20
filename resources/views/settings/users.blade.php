@@ -13,18 +13,6 @@
         <x-settings-tabs active="users" />
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
             <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4">Add User</h3>
-            @if (session('status'))
-                <div class="mb-4 rounded-md bg-green-50 dark:bg-green-900/30 p-3 text-sm text-green-700 dark:text-green-300">{{ session('status') }}</div>
-            @endif
-            @if ($errors->any())
-                <div class="mb-4 rounded-md bg-red-50 dark:bg-red-900/30 p-3 text-sm text-red-700 dark:text-red-300">
-                    <ul class="list-disc list-inside">
-                        @foreach ($errors->all() as $error)
-                            <li>{{ $error }}</li>
-                        @endforeach
-                    </ul>
-                </div>
-            @endif
             <form method="POST" action="{{ route('settings.users') }}" class="grid grid-cols-1 md:grid-cols-4 gap-3">
                 @csrf
                 <input type="text" name="name" placeholder="Name" value="{{ old('name') }}" required class="rounded-md border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300">

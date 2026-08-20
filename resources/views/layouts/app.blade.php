@@ -35,6 +35,22 @@
                                 <button @click="show = false" class="text-red-400 hover:text-red-600"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
                             </div>
                         @endif
+                        @if($errors->any())
+                            <div x-data="{ show: true }" x-show="show" x-transition x-init="setTimeout(() => show = false, 8000)" class="mb-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-3 py-2.5">
+                                <div class="flex items-start gap-2.5">
+                                    <svg class="w-4 h-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                                    <div class="flex-1">
+                                        <p class="text-sm font-medium text-red-700 dark:text-red-400">Please fix the following:</p>
+                                        <ul class="mt-1 list-disc list-inside text-sm text-red-600 dark:text-red-400">
+                                            @foreach($errors->all() as $error)
+                                                <li>{{ $error }}</li>
+                                            @endforeach
+                                        </ul>
+                                    </div>
+                                    <button @click="show = false" class="text-red-400 hover:text-red-600"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+                                </div>
+                            </div>
+                        @endif
                         @if(session('import_result'))
                             <div class="mb-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 px-3 py-2.5">
                                 <p class="text-sm text-blue-700 dark:text-blue-400">Imported {{ session('import_result')['imported'] }} vendors. Skipped: {{ session('import_result')['skipped'] }}. Errors: {{ session('import_result')['errors'] }}</p>
