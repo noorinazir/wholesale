@@ -81,6 +81,15 @@ if [ -n "$KIMI_API_KEY" ]; then
     fi
 fi
 
+# Set RESEND_API_KEY if provided
+if [ -n "$RESEND_API_KEY" ]; then
+    if grep -q "^RESEND_API_KEY=" .env; then
+        sed -i "s|^RESEND_API_KEY=.*|RESEND_API_KEY=$RESEND_API_KEY|" .env
+    else
+        echo "RESEND_API_KEY=$RESEND_API_KEY" >> .env
+    fi
+fi
+
 # Run migrations fresh (drops all tables and re-creates from scratch)
 # Using fresh because the Neon DB was just set up and may have partial/failed migrations
 # TODO: Switch back to "php artisan migrate --force" once the DB is stable with real data

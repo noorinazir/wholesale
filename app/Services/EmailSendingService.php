@@ -189,12 +189,19 @@ class EmailSendingService
 
         $password = $smtp->getDecryptedPassword();
 
-        Config::set('mail.default', 'smtp');
-        Config::set('mail.mailers.smtp.host', $smtp->host);
-        Config::set('mail.mailers.smtp.port', $smtp->port);
-        Config::set('mail.mailers.smtp.encryption', $smtp->encryption === 'none' ? null : $smtp->encryption);
-        Config::set('mail.mailers.smtp.username', $smtp->username);
-        Config::set('mail.mailers.smtp.password', $password);
+        // Use Resend API if API key is set (works on Render free plan where SMTP ports are blocked)
+        if (env('RESEND_API_KEY')) {
+            Config::set('mail.default', 'resend');
+            Config::set('services.resend.key', env('RESEND_API_KEY'));
+        } else {
+            Config::set('mail.default', 'smtp');
+            Config::set('mail.mailers.smtp.host', $smtp->host);
+            Config::set('mail.mailers.smtp.port', $smtp->port);
+            Config::set('mail.mailers.smtp.encryption', $smtp->encryption === 'none' ? null : $smtp->encryption);
+            Config::set('mail.mailers.smtp.username', $smtp->username);
+            Config::set('mail.mailers.smtp.password', $password);
+        }
+
         Config::set('mail.from.address', $smtp->from_email);
         Config::set('mail.from.name', $smtp->from_name);
 
@@ -305,12 +312,18 @@ class EmailSendingService
         $password = $smtp->getDecryptedPassword();
         $encryption = $smtp->encryption === 'none' ? null : $smtp->encryption;
 
-        Config::set('mail.default', 'smtp');
-        Config::set('mail.mailers.smtp.host', $smtp->host);
-        Config::set('mail.mailers.smtp.port', $smtp->port);
-        Config::set('mail.mailers.smtp.encryption', $encryption);
-        Config::set('mail.mailers.smtp.username', $smtp->username);
-        Config::set('mail.mailers.smtp.password', $password);
+        // Use Resend API if available, otherwise fall back to SMTP
+        if (env('RESEND_API_KEY')) {
+            Config::set('mail.default', 'resend');
+            Config::set('services.resend.key', env('RESEND_API_KEY'));
+        } else {
+            Config::set('mail.default', 'smtp');
+            Config::set('mail.mailers.smtp.host', $smtp->host);
+            Config::set('mail.mailers.smtp.port', $smtp->port);
+            Config::set('mail.mailers.smtp.encryption', $encryption);
+            Config::set('mail.mailers.smtp.username', $smtp->username);
+            Config::set('mail.mailers.smtp.password', $password);
+        }
         Config::set('mail.from.address', $smtp->from_email);
         Config::set('mail.from.name', $smtp->from_name);
 
