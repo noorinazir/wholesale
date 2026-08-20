@@ -8,7 +8,6 @@ use App\Models\GeneratedEmail;
 use App\Models\User;
 use App\Models\Vendor;
 use App\Services\DocumentRequestDetector;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class EmailPersonalizationService
@@ -82,7 +81,7 @@ class EmailPersonalizationService
             ];
         }
 
-        $parsed = $this->parseResponse($result['content']);
+        $parsed = $this->parseResponse($result['content'], 'personalization');
 
         if (!$parsed['success']) {
             return [
@@ -275,7 +274,13 @@ class EmailPersonalizationService
         ];
 
         $result = $this->kimiService->chat($messages, ['max_tokens' => 200]);
-        $aiGeneration = $this->logGeneration($vendor, $user, $result, $messages, 'document_response');
+
+        $aiGeneration = null;
+        try {
+            $aiGeneration = $this->logGeneration($vendor, $user, $result, $messages, 'document_response');
+        } catch (\Exception $e) {
+            Log::error('Failed to log AI generation', ['error' => $e->getMessage()]);
+        }
 
         $personalization = [
             'requested_documents' => $requestedDocs,
@@ -284,7 +289,7 @@ class EmailPersonalizationService
         ];
 
         if ($result['success']) {
-            $parsed = $this->parseResponse($result['content']);
+            $parsed = $this->parseResponse($result['content'], 'document_response');
             if ($parsed['success']) {
                 $personalization['opening'] = $parsed['data']['opening'] ?? '';
                 $personalization['notes'] = $parsed['data']['notes'] ?? 'AI-assisted document response';
@@ -310,7 +315,7 @@ class EmailPersonalizationService
             'quality_checks' => $qualityChecks,
         ]);
 
-        if (isset($aiGeneration)) {
+        if ($aiGeneration) {
             $aiGeneration->update(['generated_email_id' => $generatedEmail->id]);
         }
 
@@ -323,7 +328,7 @@ class EmailPersonalizationService
         ];
     }
 
-    private function parseResponse(?string $content): array
+    private function parseResponse(?string $content, ?string $expectedFormat = null): array
     {
         if (!$content) {
             return ['success' => false, 'error' => 'Empty response from AI'];
@@ -339,6 +344,20 @@ class EmailPersonalizationService
 
         if (json_last_error() !== JSON_ERROR_NONE) {
             return ['success' => false, 'error' => 'Invalid JSON: ' . json_last_error_msg()];
+        }
+
+        if ($expectedFormat === 'personalization') {
+            if (empty($data['opening'])) {
+                return ['success' => false, 'error' => 'Missing opening in personalization response'];
+            }
+            return ['success' => true, 'data' => $data];
+        }
+
+        if ($expectedFormat === 'document_response') {
+            if (empty($data['opening'])) {
+                return ['success' => false, 'error' => 'Missing opening in document response'];
+            }
+            return ['success' => true, 'data' => $data];
         }
 
         if (empty($data['subject']) || empty($data['body'])) {
@@ -394,7 +413,8 @@ class EmailPersonalizationService
             $checks['length'] = 'pass';
         }
 
-        if ($vendor->contact_name && !str_contains(strtolower($emailData['body'] ?? ''), strtolower($vendor->contact_name))) {
+        $contactFirstName = $vendor->contact_name ? explode(' ', $vendor->contact_name)[0] : '';
+        if ($contactFirstName && !str_contains(strtolower($emailData['body'] ?? ''), strtolower($contactFirstName))) {
             $checks['personalization'] = 'warning';
             $warnings[] = 'Contact name not found in email body';
         } else {
@@ -416,22 +436,6 @@ class EmailPersonalizationService
 
         $checks['warnings'] = $warnings;
         return $checks;
-    }
-
-    private function getPreviousHistory(Vendor $vendor): ?string
-    {
-        $logs = $vendor->emailLogs()->where('status', 'sent')->orderBy('sent_at', 'desc')->limit(5)->get();
-
-        if ($logs->isEmpty()) {
-            return null;
-        }
-
-        $history = '';
-        foreach ($logs as $log) {
-            $history .= "Date: {$log->sent_at}\nSubject: {$log->subject}\nStatus: {$log->status}\n\n";
-        }
-
-        return $history;
     }
 
     private function logGeneration(?Vendor $vendor, ?User $user, array $result, array $messages, string $action): AiGeneration

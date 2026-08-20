@@ -5,28 +5,9 @@ namespace App\Services\AI;
 use App\Models\Company;
 use App\Models\Vendor;
 use App\Models\GeneratedEmail;
-use App\Models\AiGeneration;
-use Illuminate\Support\Facades\Log;
 
 class PromptBuilder
 {
-    public function buildEmailGenerationPrompt(
-        Vendor $vendor,
-        ?Company $company,
-        string $objective = 'Wholesale Authorization',
-        string $tone = 'professional',
-        ?string $customInstructions = null,
-        ?string $previousHistory = null
-    ): array {
-        $systemPrompt = $this->buildSystemPrompt();
-        $userPrompt = $this->buildUserPrompt($vendor, $company, $objective, $tone, $customInstructions, $previousHistory);
-
-        return [
-            ['role' => 'system', 'content' => $systemPrompt],
-            ['role' => 'user', 'content' => $userPrompt],
-        ];
-    }
-
     public function buildModificationPrompt(GeneratedEmail $email, string $instruction): array
     {
         $systemPrompt = "You are an expert B2B wholesale business development assistant. Your task is to modify the provided email according to the user's instructions. Return the modified email in the same JSON format.";
@@ -160,35 +141,6 @@ class PromptBuilder
             "{\"subject\": \"...\", \"body\": \"...\", \"personalization_notes\": \"...\"}";
     }
 
-    private function buildUserPrompt(
-        Vendor $vendor,
-        ?Company $company,
-        string $objective,
-        string $tone,
-        ?string $customInstructions,
-        ?string $previousHistory
-    ): string {
-        $prompt = "COMPANY INFORMATION:\n{$this->formatCompanyInfo($company)}\n\n";
-        $prompt .= "VENDOR INFORMATION:\n{$this->formatVendorInfo($vendor)}\n\n";
-        $prompt .= "EMAIL OBJECTIVE: {$objective}\n\n";
-        $prompt .= "TONE: {$tone}\n\n";
-
-        if ($previousHistory) {
-            $prompt .= "PREVIOUS COMMUNICATION:\n{$previousHistory}\n\n";
-        } else {
-            $prompt .= "PREVIOUS COMMUNICATION: None (first contact)\n\n";
-        }
-
-        if ($customInstructions) {
-            $prompt .= "USER INSTRUCTIONS:\n{$customInstructions}\n\n";
-        }
-
-        $prompt .= "Return JSON:\n";
-        $prompt .= "{\"subject\": \"...\", \"body\": \"...\", \"personalization_notes\": \"...\"}";
-
-        return $prompt;
-    }
-
     private function formatCompanyInfo(?Company $company): string
     {
         if (!$company) {
@@ -230,16 +182,6 @@ class PromptBuilder
         }
 
         return implode("\n", $parts);
-    }
-
-    public function formatCompanyInfoPublic(?Company $company): string
-    {
-        return $this->formatCompanyInfo($company);
-    }
-
-    public function formatVendorInfoPublic(Vendor $vendor): string
-    {
-        return $this->formatVendorInfo($vendor);
     }
 
     private function formatVendorInfo(Vendor $vendor): string

@@ -32,6 +32,16 @@ class TemplateEngine
         $categoryQuestion = $personalization['category_question'] ?? '';
         $valueProp = $personalization['value_prop'] ?? '';
 
+        if (empty($valueProp)) {
+            $valueProp = '';
+        } else {
+            $valueProp = rtrim($valueProp) . ' ';
+        }
+
+        if (empty($categoryQuestion)) {
+            $categoryQuestion = 'Do you have a wholesale or dealer program available?';
+        }
+
         $signature = "Best regards,\n";
         if ($contactPerson) $signature .= "{$contactPerson}\n";
         $signature .= "{$companyName}\n";
@@ -60,6 +70,7 @@ class TemplateEngine
         ]);
 
         $body = preg_replace('/\n{3,}/', "\n\n", $body);
+        $body = preg_replace('/^\s+\n/m', "", $body);
 
         return [
             'subject' => $subject,

@@ -3,12 +3,9 @@
 namespace App\Services;
 
 use App\Models\Campaign;
-use App\Models\EmailLog;
 use App\Models\EmailQueue;
 use App\Models\FollowUp;
 use App\Models\Vendor;
-use App\Models\Notification;
-use App\Services\AI\EmailPersonalizationService;
 use App\Services\AI\TemplateEngine;
 use App\Models\Company;
 use App\Jobs\ProcessEmailQueueJob;
