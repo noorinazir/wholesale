@@ -1113,8 +1113,17 @@ class ApplicationController extends Controller
         $validated = $request->validated();
 
         $validated['vendor_id'] = $vendor->id;
-        $product = \App\Models\Product::create($validated);
-        $product->recalculate();
+
+        try {
+            $product = \App\Models\Product::create($validated);
+            $product->recalculate();
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Failed to create product', [
+                'error' => $e->getMessage(),
+                'data' => $validated,
+            ]);
+            return back()->with('error', 'Failed to create product: ' . $e->getMessage())->withInput();
+        }
 
         $this->auditLog->log('created', 'Product', $product->product_name);
         return back()->with('status', 'Product added.');
@@ -1137,8 +1146,16 @@ class ApplicationController extends Controller
             }
         }
 
-        $product = \App\Models\Product::create($validated);
-        $product->recalculate();
+        try {
+            $product = \App\Models\Product::create($validated);
+            $product->recalculate();
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Failed to create product', [
+                'error' => $e->getMessage(),
+                'data' => $validated,
+            ]);
+            return back()->with('error', 'Failed to create product: ' . $e->getMessage())->withInput();
+        }
 
         $this->auditLog->log('created', 'Product', $product->product_name);
 
@@ -1154,8 +1171,16 @@ class ApplicationController extends Controller
         $product = \App\Models\Product::findOrFail($id);
         $validated = $request->validated();
 
-        $product->update($validated);
-        $product->recalculate();
+        try {
+            $product->update($validated);
+            $product->recalculate();
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Failed to update product', [
+                'error' => $e->getMessage(),
+                'product_id' => $id,
+            ]);
+            return back()->with('error', 'Failed to update product: ' . $e->getMessage())->withInput();
+        }
 
         $this->auditLog->log('updated', 'Product', $product->product_name);
         return back()->with('status', 'Product updated.');
