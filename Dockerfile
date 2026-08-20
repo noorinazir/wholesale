@@ -41,7 +41,7 @@ RUN sed -i 's/Listen 80/Listen 8080/' /etc/apache2/ports.conf \
 
 # Set permissions
 RUN chown -R www-data:www-data /var/www/html \
-    && chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache /var/www/html/public
+    && chmod -R 775 /var/www/html/bootstrap/cache /var/www/html/public
 
 # Start script: run migrations, seed, then start Apache
 COPY start.sh /start.sh

@@ -1,8 +1,20 @@
 #!/bin/bash
 set -e
 
-# Ensure storage directories exist and are writable
-mkdir -p storage/app/public storage/framework/cache storage/framework/sessions storage/framework/views storage/logs
+# Clear any stale cached config/routes/views from previous deploy
+php artisan optimize:clear 2>/dev/null || true
+
+# Move storage to persistent disk so sessions/cache/survive restarts
+if [ ! -d /var/data/storage ]; then
+    mkdir -p /var/data/storage
+    cp -r storage/* /var/data/storage/ 2>/dev/null || true
+fi
+rm -rf storage
+ln -sf /var/data/storage storage
+
+# Ensure all storage subdirectories exist
+mkdir -p storage/app/public storage/framework/cache/data storage/framework/sessions storage/framework/views storage/logs
+chown -R www-data:www-data storage bootstrap/cache
 chmod -R 775 storage bootstrap/cache
 
 # Create .env file if it doesn't exist
@@ -75,16 +87,15 @@ if [ -n "$KIMI_API_KEY" ]; then
     fi
 fi
 
-# Run migrations
+# Run migrations (continue even if some already applied)
 php artisan migrate --force
 
-# Run base seeder (creates admin user + system settings)
+# Run base seeder (creates admin user + system settings + RBAC permissions)
 php artisan db:seed --class=DatabaseSeeder --force
 
-# Cache config and routes for production
+# Cache config and routes for production (don't cache views - Volt handles its own)
 php artisan config:cache
 php artisan route:cache
-php artisan view:cache
 
 # Start queue worker in background
 php artisan queue:work --daemon --tries=3 --sleep=3 > /dev/null 2>&1 &
