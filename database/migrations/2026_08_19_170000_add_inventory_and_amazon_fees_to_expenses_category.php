@@ -7,7 +7,9 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (DB::getDriverName() === 'sqlite') {
+        $driver = DB::getDriverName();
+
+        if ($driver === 'sqlite') {
             // SQLite: recreate table without CHECK constraint to allow new category values
             DB::statement('CREATE TABLE expenses_new AS SELECT * FROM expenses');
             DB::statement('DROP TABLE expenses');
@@ -42,7 +44,16 @@ return new class extends Migration
             DB::statement('CREATE INDEX expenses_category_index ON expenses(category)');
             DB::statement('CREATE INDEX expenses_expense_date_index ON expenses(expense_date)');
             DB::statement('CREATE INDEX expenses_status_index ON expenses(status)');
+        } elseif ($driver === 'pgsql') {
+            // PostgreSQL: drop the check constraint and re-add with new categories
+            DB::statement("ALTER TABLE expenses DROP CONSTRAINT IF EXISTS expenses_category_check");
+            DB::statement("ALTER TABLE expenses ADD CONSTRAINT expenses_category_check CHECK (category IN (
+                'shipping', 'labeling', 'inventory', 'amazon_fees', 'fba_fees',
+                'amazon_referral', 'advertising', 'storage', 'returns', 'supplies',
+                'software', 'fees', 'other'
+            ))");
         } else {
+            // MySQL
             DB::statement("ALTER TABLE expenses MODIFY COLUMN category ENUM(
                 'shipping', 'labeling', 'inventory', 'amazon_fees', 'fba_fees',
                 'amazon_referral', 'advertising', 'storage', 'returns', 'supplies',
