@@ -13,7 +13,9 @@ services:
       - key: APP_KEY
         generateValue: true
       - key: APP_URL
-        value: https://wholesale-outreach.onrender.com
+        value: https://wholesale-jr0r.onrender.com
+      - key: ASSET_URL
+        value: https://wholesale-jr0r.onrender.com
       - key: DB_CONNECTION
         value: sqlite
       - key: DB_DATABASE

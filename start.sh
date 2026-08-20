@@ -30,6 +30,20 @@ sed -i 's|^CACHE_STORE=.*|CACHE_STORE=file|' .env
 sed -i 's|^LOG_CHANNEL=.*|LOG_CHANNEL=stderr|' .env
 sed -i 's|^MAIL_MAILER=.*|MAIL_MAILER=log|' .env
 
+# Force HTTPS for asset URLs (Render terminates SSL at proxy)
+if grep -q "^ASSET_URL=" .env; then
+    sed -i "s|^ASSET_URL=.*|ASSET_URL=$APP_URL|" .env
+else
+    echo "ASSET_URL=$APP_URL" >> .env
+fi
+
+# Tell Laravel to trust the Render proxy headers for HTTPS
+if grep -q "^TRUSTED_PROXIES=" .env; then
+    sed -i 's|^TRUSTED_PROXIES=.*|TRUSTED_PROXIES=*|' .env
+else
+    echo "TRUSTED_PROXIES=*" >> .env
+fi
+
 # Set APP_URL if provided
 if [ -n "$APP_URL" ]; then
     sed -i "s|^APP_URL=.*|APP_URL=$APP_URL|" .env
