@@ -19,7 +19,7 @@ fi
 sed -i 's|^DB_CONNECTION=.*|DB_CONNECTION=pgsql|' .env
 # Clear stale MySQL/SQLite DB vars so DB_URL is used exclusively
 sed -i 's|^DB_HOST=.*|DB_HOST=|' .env
-sed -i 's|^DB_PORT=.*|DB_PORT=|' .env
+sed -i 's|^DB_PORT=.*|DB_PORT=5432|' .env
 sed -i 's|^DB_DATABASE=.*|DB_DATABASE=|' .env
 sed -i 's|^DB_USERNAME=.*|DB_USERNAME=|' .env
 sed -i 's|^DB_PASSWORD=.*|DB_PASSWORD=|' .env
