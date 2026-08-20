@@ -15,22 +15,8 @@ if [ ! -f .env ]; then
     cp .env.example .env
 fi
 
-# Create SQLite database in /var/data (persistent disk on Render)
-# SQLite needs write access to both the database file AND the directory (for journal/WAL files)
-mkdir -p /var/data
-chown www-data:www-data /var/data
-chmod 775 /var/data
-touch /var/data/database.sqlite
-chown www-data:www-data /var/data/database.sqlite
-chmod 664 /var/data/database.sqlite
-
 # Override critical config in .env for Render deployment
-sed -i 's|^DB_CONNECTION=.*|DB_CONNECTION=sqlite|' .env
-sed -i 's|^DB_HOST=.*|DB_HOST=|' .env
-sed -i 's|^DB_PORT=.*|DB_PORT=|' .env
-sed -i 's|^DB_DATABASE=.*|DB_DATABASE=/var/data/database.sqlite|' .env
-sed -i 's|^DB_USERNAME=.*|DB_USERNAME=|' .env
-sed -i 's|^DB_PASSWORD=.*|DB_PASSWORD=|' .env
+sed -i 's|^DB_CONNECTION=.*|DB_CONNECTION=pgsql|' .env
 sed -i 's|^APP_ENV=.*|APP_ENV=production|' .env
 sed -i 's|^APP_DEBUG=.*|APP_DEBUG=false|' .env
 sed -i 's|^SESSION_DRIVER=.*|SESSION_DRIVER=file|' .env
@@ -38,6 +24,15 @@ sed -i 's|^QUEUE_CONNECTION=.*|QUEUE_CONNECTION=database|' .env
 sed -i 's|^CACHE_STORE=.*|CACHE_STORE=file|' .env
 sed -i 's|^LOG_CHANNEL=.*|LOG_CHANNEL=stderr|' .env
 sed -i 's|^MAIL_MAILER=.*|MAIL_MAILER=log|' .env
+
+# Set DB_URL if provided (Neon PostgreSQL connection string)
+if [ -n "$DB_URL" ]; then
+    if grep -q "^DB_URL=" .env; then
+        sed -i "s|^DB_URL=.*|DB_URL=$DB_URL|" .env
+    else
+        echo "DB_URL=$DB_URL" >> .env
+    fi
+fi
 
 # Force HTTPS for asset URLs (Render terminates SSL at proxy)
 if grep -q "^ASSET_URL=" .env; then
