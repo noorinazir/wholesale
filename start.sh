@@ -33,6 +33,12 @@ sed -i 's|^MAIL_MAILER=.*|MAIL_MAILER=log|' .env
 # Set APP_URL if provided
 if [ -n "$APP_URL" ]; then
     sed -i "s|^APP_URL=.*|APP_URL=$APP_URL|" .env
+    # Also set ASSET_URL so Vite assets resolve correctly
+    if grep -q "^ASSET_URL=" .env; then
+        sed -i "s|^ASSET_URL=.*|ASSET_URL=$APP_URL|" .env
+    else
+        echo "ASSET_URL=$APP_URL" >> .env
+    fi
 fi
 
 # Generate APP_KEY if not set in environment
