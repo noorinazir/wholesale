@@ -15,24 +15,41 @@ mkdir -p /var/data
 touch /var/data/database.sqlite
 chmod 666 /var/data/database.sqlite
 
+# Override critical config in .env for Render deployment
+sed -i 's|^DB_CONNECTION=.*|DB_CONNECTION=sqlite|' .env
+sed -i 's|^DB_HOST=.*|DB_HOST=|' .env
+sed -i 's|^DB_PORT=.*|DB_PORT=|' .env
+sed -i 's|^DB_DATABASE=.*|DB_DATABASE=/var/data/database.sqlite|' .env
+sed -i 's|^DB_USERNAME=.*|DB_USERNAME=|' .env
+sed -i 's|^DB_PASSWORD=.*|DB_PASSWORD=|' .env
+sed -i 's|^APP_ENV=.*|APP_ENV=production|' .env
+sed -i 's|^APP_DEBUG=.*|APP_DEBUG=false|' .env
+sed -i 's|^SESSION_DRIVER=.*|SESSION_DRIVER=file|' .env
+sed -i 's|^QUEUE_CONNECTION=.*|QUEUE_CONNECTION=sync|' .env
+sed -i 's|^CACHE_STORE=.*|CACHE_STORE=file|' .env
+sed -i 's|^LOG_CHANNEL=.*|LOG_CHANNEL=stderr|' .env
+sed -i 's|^MAIL_MAILER=.*|MAIL_MAILER=log|' .env
+
+# Set APP_URL if provided
+if [ -n "$APP_URL" ]; then
+    sed -i "s|^APP_URL=.*|APP_URL=$APP_URL|" .env
+fi
+
 # Generate APP_KEY if not set in environment
 if [ -z "$APP_KEY" ]; then
     php artisan key:generate --force
 else
-    # Ensure APP_KEY is written to .env
     sed -i "s|^APP_KEY=.*|APP_KEY=$APP_KEY|" .env
 fi
 
-# Write other env vars to .env so Laravel picks them up
-for var in APP_ENV APP_DEBUG APP_URL DB_CONNECTION DB_DATABASE SESSION_DRIVER QUEUE_CONNECTION CACHE_STORE LOG_CHANNEL MAIL_MAILER KIMI_API_KEY KIMI_MODEL KIMI_BASE_URL; do
-    if [ -n "${!var}" ]; then
-        if grep -q "^${var}=" .env; then
-            sed -i "s|^${var}=.*|${var}=${!var}|" .env
-        else
-            echo "${var}=${!var}" >> .env
-        fi
+# Set KIMI_API_KEY if provided
+if [ -n "$KIMI_API_KEY" ]; then
+    if grep -q "^KIMI_API_KEY=" .env; then
+        sed -i "s|^KIMI_API_KEY=.*|KIMI_API_KEY=$KIMI_API_KEY|" .env
+    else
+        echo "KIMI_API_KEY=$KIMI_API_KEY" >> .env
     fi
-done
+fi
 
 # Run migrations
 php artisan migrate --force
