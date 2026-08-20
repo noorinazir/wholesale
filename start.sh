@@ -11,9 +11,13 @@ if [ ! -f .env ]; then
 fi
 
 # Create SQLite database in /var/data (persistent disk on Render)
+# SQLite needs write access to both the database file AND the directory (for journal/WAL files)
 mkdir -p /var/data
+chown www-data:www-data /var/data
+chmod 775 /var/data
 touch /var/data/database.sqlite
-chmod 666 /var/data/database.sqlite
+chown www-data:www-data /var/data/database.sqlite
+chmod 664 /var/data/database.sqlite
 
 # Override critical config in .env for Render deployment
 sed -i 's|^DB_CONNECTION=.*|DB_CONNECTION=sqlite|' .env

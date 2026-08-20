@@ -18,6 +18,23 @@ class DatabaseSeeder extends Seeder
             Role::firstOrCreate(['name' => $role]);
         }
 
+        // Create permissions and assign to roles
+        $permissions = ['manage-settings', 'manage-vendors', 'manage-campaigns', 'manage-finance', 'manage-products'];
+        foreach ($permissions as $perm) {
+            Permission::firstOrCreate(['name' => $perm]);
+        }
+
+        $adminRole = Role::where('name', 'administrator')->first();
+        $adminRole->syncPermissions($permissions);
+
+        $managerRole = Role::where('name', 'manager')->first();
+        $managerRole->syncPermissions(['manage-vendors', 'manage-campaigns', 'manage-finance', 'manage-products']);
+
+        $staffRole = Role::where('name', 'staff')->first();
+        $staffRole->syncPermissions(['manage-vendors', 'manage-products']);
+
+        // viewer gets no permissions
+
         $admin = User::firstOrCreate(
             ['email' => 'admin@wholesale.com'],
             [
