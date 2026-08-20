@@ -100,7 +100,9 @@ class FinanceController extends Controller
 
         // Expense stats this month
         $monthExpenses = Expense::whereBetween('expense_date', [$monthStart, $monthEnd])
-            ->where('status', '!=', 'rejected')->sum('amount');
+            ->where('status', '!=', 'rejected')
+            ->where('notes', 'not like', 'Auto-generated from Amazon sale%')
+            ->sum('amount');
         $expenseBreakdown = $this->plService->getExpenseBreakdown($monthStart, $monthEnd);
 
         // Amazon sync status
@@ -865,7 +867,6 @@ class FinanceController extends Controller
                 ]);
 
                 $order->recalculate();
-                $this->generateSaleExpenses($order);
 
                 if ($product) {
                     $product->adjustStock($quantity, 'subtract');
@@ -933,7 +934,11 @@ class FinanceController extends Controller
 
         // Auto-link to latest PO for this product
         $purchaseOrderId = null;
+        $referralRate = 0;
         if (!empty($validated['product_id'])) {
+            $product = Product::find($validated['product_id']);
+            $referralRate = (float)($product?->referral_fee_percent ?? 0);
+
             $latestPO = PurchaseOrderItem::where('product_id', $validated['product_id'])
                 ->whereHas('purchaseOrder', fn($q) => $q->whereIn('status', ['confirmed', 'in_production', 'shipped', 'received', 'partial_received']))
                 ->latest()
@@ -975,7 +980,7 @@ class FinanceController extends Controller
             'operation_cost' => $operationCost * $quantity,
             'advertising_cost' => $advertisingCost * $quantity,
             'return_cost' => $returnCost * $quantity,
-            'breakaway_referral_rate' => 0,
+            'breakaway_referral_rate' => $referralRate,
             'tax_collected' => $taxData['amount'],
             'tax_rate' => $taxData['rate'],
             'tax_state' => $validated['tax_state'] ?? null,
@@ -987,9 +992,6 @@ class FinanceController extends Controller
         ]);
 
         $order->recalculate();
-
-        // Auto-generate expenses for Amazon fees if they exist
-        $this->generateSaleExpenses($order);
 
         // Auto-deduct stock if product is linked
         if ($order->product_id) {
@@ -1125,6 +1127,12 @@ class FinanceController extends Controller
         $quantity = $validated['quantity'];
         $totalRevenue = $validated['sale_price'] * $quantity;
 
+        $referralRate = 0;
+        if (!empty($validated['product_id'])) {
+            $product = Product::find($validated['product_id']);
+            $referralRate = (float)($product?->referral_fee_percent ?? 0);
+        }
+
         $taxData = ['rate' => 0, 'amount' => 0];
         if (!empty($validated['tax_state'])) {
             $taxData = AmazonOrder::calculateTax($totalRevenue, $validated['tax_state']);
@@ -1147,6 +1155,7 @@ class FinanceController extends Controller
             'product_cost' => ($validated['product_cost'] ?? 0) * $quantity,
             'fba_fee' => ($validated['fba_fee'] ?? 0) * $quantity,
             'amazon_referral_fee' => 0,
+            'breakaway_referral_rate' => $referralRate,
             'shipping_cost' => ($validated['shipping_cost'] ?? 0) * $quantity,
             'labeling_cost' => ($validated['labeling_cost'] ?? 0) * $quantity,
             'other_costs' => ($validated['other_costs'] ?? 0) * $quantity,
@@ -1515,8 +1524,7 @@ class FinanceController extends Controller
 
             $order->recalculate();
 
-            // Auto-generate expenses and deduct stock
-            $this->generateSaleExpenses($order);
+            // Auto-deduct stock
             if ($product) {
                 $product->adjustStock($quantity, 'subtract');
             }

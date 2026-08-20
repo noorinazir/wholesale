@@ -68,11 +68,19 @@ class Product extends Model
 
     public function recalculate(): void
     {
-        $totalCost = (float)$this->buying_price + (float)$this->fba_fee + (float)$this->shipping_cost
-            + (float)$this->labeling_cost + (float)$this->other_costs + (float)$this->operation_cost;
-
         $sellPrice = (float)$this->amazon_sell_price;
-        $amazonFee = (float)$this->fba_fee;
+
+        $referralFee = 0;
+        if ($sellPrice > 0 && (float)$this->referral_fee_percent > 0) {
+            $referralFee = $sellPrice * (float)$this->referral_fee_percent / 100;
+        }
+
+        $fbaFee = (float)$this->fba_fee;
+        $amazonFee = $fbaFee + $referralFee;
+
+        $totalCost = (float)$this->buying_price + $fbaFee + $referralFee
+            + (float)$this->shipping_cost + (float)$this->labeling_cost
+            + (float)$this->other_costs + (float)$this->operation_cost;
 
         $netProfit = $sellPrice - $totalCost;
         $marginPercent = $sellPrice > 0 ? ($netProfit / $sellPrice) * 100 : 0;

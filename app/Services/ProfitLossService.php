@@ -20,6 +20,7 @@ class ProfitLossService
 
         $expenses = Expense::whereBetween('expense_date', [$startDate, $endDate])
             ->where('status', '!=', 'rejected')
+            ->where('notes', 'not like', 'Auto-generated from Amazon sale%')
             ->get();
 
         return $this->calculateSummary($orders, $expenses, $startDate, $endDate, $periodType);
@@ -35,6 +36,7 @@ class ProfitLossService
         $expenses = Expense::where('vendor_id', $vendorId)
             ->whereBetween('expense_date', [$startDate, $endDate])
             ->where('status', '!=', 'rejected')
+            ->where('notes', 'not like', 'Auto-generated from Amazon sale%')
             ->get();
 
         return $this->calculateSummary($orders, $expenses, $startDate, $endDate, 'vendor');
@@ -50,6 +52,7 @@ class ProfitLossService
         $expenses = Expense::where('product_id', $productId)
             ->whereBetween('expense_date', [$startDate, $endDate])
             ->where('status', '!=', 'rejected')
+            ->where('notes', 'not like', 'Auto-generated from Amazon sale%')
             ->get();
 
         return $this->calculateSummary($orders, $expenses, $startDate, $endDate, 'product');
@@ -112,6 +115,7 @@ class ProfitLossService
     {
         $expenses = Expense::whereBetween('expense_date', [$startDate, $endDate])
             ->where('status', '!=', 'rejected')
+            ->where('notes', 'not like', 'Auto-generated from Amazon sale%')
             ->selectRaw('category, SUM(amount) as total')
             ->groupBy('category')
             ->pluck('total', 'category')
@@ -139,6 +143,7 @@ class ProfitLossService
         if ($orderCosts) {
             if ($orderCosts->product_cost > 0) $breakdown['Product Cost'] = (float)$orderCosts->product_cost;
             if ($orderCosts->fba_fee > 0) $breakdown['Amazon Fees'] = (float)$orderCosts->fba_fee;
+            if ($orderCosts->referral_fee > 0) $breakdown['Amazon Referral'] = (float)$orderCosts->referral_fee;
             if ($orderCosts->shipping > 0) $breakdown['Shipping'] = (float)$orderCosts->shipping;
             if ($orderCosts->labeling > 0) $breakdown['Labeling'] = (float)$orderCosts->labeling;
             if ($orderCosts->operation > 0) $breakdown['Operation'] = (float)$orderCosts->operation;
@@ -166,6 +171,7 @@ class ProfitLossService
         $totalRevenue = $activeOrders->sum(fn($o) => (float)$o->total_revenue);
         $totalProductCost = $activeOrders->sum(fn($o) => (float)$o->product_cost);
         $totalFbaFees = $activeOrders->sum(fn($o) => (float)$o->fba_fee);
+        $totalReferralFees = $activeOrders->sum(fn($o) => (float)$o->amazon_referral_fee);
         $totalShipping = $activeOrders->sum(fn($o) => (float)$o->shipping_cost);
         $totalLabeling = $activeOrders->sum(fn($o) => (float)$o->labeling_cost);
         $totalOtherCosts = $activeOrders->sum(fn($o) => (float)$o->other_costs);
@@ -179,7 +185,7 @@ class ProfitLossService
         $returnedFbaFees = $returnedOrders->sum(fn($o) => (float)$o->fba_fee);
         $returnedShipping = $returnedOrders->sum(fn($o) => (float)$o->shipping_cost);
 
-        $totalOrderCosts = $totalProductCost + $totalFbaFees + $totalShipping + $totalLabeling + $totalOtherCosts + $totalOperationCost + $totalAdvertising
+        $totalOrderCosts = $totalProductCost + $totalFbaFees + $totalReferralFees + $totalShipping + $totalLabeling + $totalOtherCosts + $totalOperationCost + $totalAdvertising
             + $totalReturnCost + $returnedProductCost + $returnedFbaFees + $returnedShipping;
 
         $totalExpenses = $expenses->sum(fn($e) => (float)$e->amount);
@@ -199,7 +205,7 @@ class ProfitLossService
             'total_revenue' => round($totalRevenue, 2),
             'total_product_cost' => round($totalProductCost, 2),
             'total_fba_fees' => round($totalFbaFees, 2),
-            'total_referral_fees' => 0,
+            'total_referral_fees' => round($totalReferralFees, 2),
             'total_shipping' => round($totalShipping, 2),
             'total_labeling' => round($totalLabeling, 2),
             'total_other_costs' => round($totalOtherCosts, 2),

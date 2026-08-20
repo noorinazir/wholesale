@@ -69,8 +69,14 @@ class AmazonOrder extends Model
     public function recalculate(): void
     {
         $fbaFee = (float)$this->fba_fee;
+        $isReturned = in_array($this->order_status, ['returned', 'refunded']);
 
-        $baseCost = (float)$this->product_cost + $fbaFee
+        $referralFee = (float)$this->amazon_referral_fee;
+        if ($referralFee <= 0 && (float)$this->breakaway_referral_rate > 0 && !$isReturned) {
+            $referralFee = ((float)$this->total_revenue * (float)$this->breakaway_referral_rate) / 100;
+        }
+
+        $baseCost = (float)$this->product_cost + $fbaFee + $referralFee
             + (float)$this->shipping_cost + (float)$this->labeling_cost
             + (float)$this->other_costs + (float)$this->operation_cost
             + (float)$this->advertising_cost;
@@ -78,16 +84,14 @@ class AmazonOrder extends Model
         $returnCost = (float)$this->return_cost;
         $totalCost = $baseCost + $returnCost;
 
-        // For returned/refunded orders: revenue is $0 (refunded to customer),
-        // but seller still bears all costs + return shipping/restocking fees
-        $isReturned = in_array($this->order_status, ['returned', 'refunded']);
         $effectiveRevenue = $isReturned ? 0 : (float)$this->total_revenue;
 
         $netProfit = $effectiveRevenue - $totalCost;
         $margin = $effectiveRevenue > 0 ? ($netProfit / $effectiveRevenue) * 100 : 0;
 
         $this->update([
-            'amazon_fee_total' => round($fbaFee, 2),
+            'amazon_referral_fee' => round($referralFee, 2),
+            'amazon_fee_total' => round($fbaFee + $referralFee, 2),
             'total_cost' => round($totalCost, 2),
             'net_profit' => round($netProfit, 2),
             'margin_percent' => round($margin, 2),
