@@ -25,7 +25,7 @@ sed -i 's|^DB_PASSWORD=.*|DB_PASSWORD=|' .env
 sed -i 's|^APP_ENV=.*|APP_ENV=production|' .env
 sed -i 's|^APP_DEBUG=.*|APP_DEBUG=false|' .env
 sed -i 's|^SESSION_DRIVER=.*|SESSION_DRIVER=file|' .env
-sed -i 's|^QUEUE_CONNECTION=.*|QUEUE_CONNECTION=sync|' .env
+sed -i 's|^QUEUE_CONNECTION=.*|QUEUE_CONNECTION=database|' .env
 sed -i 's|^CACHE_STORE=.*|CACHE_STORE=file|' .env
 sed -i 's|^LOG_CHANNEL=.*|LOG_CHANNEL=stderr|' .env
 sed -i 's|^MAIL_MAILER=.*|MAIL_MAILER=log|' .env
@@ -81,6 +81,9 @@ php artisan db:seed --class=DatabaseSeeder --force
 php artisan config:cache
 php artisan route:cache
 php artisan view:cache
+
+# Start queue worker in background
+php artisan queue:work --daemon --tries=3 --sleep=3 > /dev/null 2>&1 &
 
 # Start Apache in foreground
 apache2-foreground

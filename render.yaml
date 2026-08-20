@@ -23,7 +23,7 @@ services:
       - key: SESSION_DRIVER
         value: file
       - key: QUEUE_CONNECTION
-        value: sync
+        value: database
       - key: CACHE_STORE
         value: file
       - key: LOG_CHANNEL
