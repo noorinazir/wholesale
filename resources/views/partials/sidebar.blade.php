@@ -96,14 +96,17 @@ $unreadCount = $unreadNotifications->count();
                 <x-sidebar-link :href="route('products.index')" :active="request()->routeIs('products.*')" icon="folder">
                     Products
                 </x-sidebar-link>
+                @can('manage-vendors')
                 <x-sidebar-link :href="route('vendors.import')" :active="request()->routeIs('vendors.import')" icon="upload">
                     Import
                 </x-sidebar-link>
+                @endcan
                 <x-sidebar-link :href="route('suppression.index')" :active="request()->routeIs('suppression.*')" icon="ban">
                     Suppression List
                 </x-sidebar-link>
             </div>
 
+            @can('manage-finance')
             <button @click="collapsed.finance = !collapsed.finance" class="w-full flex items-center justify-between pt-3 px-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider hover:text-gray-600 dark:hover:text-gray-300">
                 <span>Finance</span>
                 <svg class="w-3 h-3 transition-transform" :class="collapsed.finance ? '-rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
@@ -131,7 +134,9 @@ $unreadCount = $unreadNotifications->count();
                     Tax Rates
                 </x-sidebar-link>
             </div>
+            @endcan
 
+            @can('manage-campaigns')
             <button @click="collapsed.campaigns = !collapsed.campaigns" class="w-full flex items-center justify-between pt-3 px-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider hover:text-gray-600 dark:hover:text-gray-300">
                 <span>Campaigns</span>
                 <svg class="w-3 h-3 transition-transform" :class="collapsed.campaigns ? '-rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
@@ -141,7 +146,9 @@ $unreadCount = $unreadNotifications->count();
                     Campaigns
                 </x-sidebar-link>
             </div>
+            @endcan
 
+            @can('manage-emails')
             <button @click="collapsed.emails = !collapsed.emails" class="w-full flex items-center justify-between pt-3 px-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider hover:text-gray-600 dark:hover:text-gray-300">
                 <span>Emails</span>
                 <svg class="w-3 h-3 transition-transform" :class="collapsed.emails ? '-rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
@@ -166,7 +173,9 @@ $unreadCount = $unreadNotifications->count();
                     History
                 </x-sidebar-link>
             </div>
+            @endcan
 
+            @can('manage-emails')
             <button @click="collapsed.tools = !collapsed.tools" class="w-full flex items-center justify-between pt-3 px-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider hover:text-gray-600 dark:hover:text-gray-300">
                 <span>Tools</span>
                 <svg class="w-3 h-3 transition-transform" :class="collapsed.tools ? '-rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
@@ -185,6 +194,7 @@ $unreadCount = $unreadNotifications->count();
                     Reports
                 </x-sidebar-link>
             </div>
+            @endcan
 
             @can('manage-settings')
             <button @click="collapsed.system = !collapsed.system" class="w-full flex items-center justify-between pt-3 px-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider hover:text-gray-600 dark:hover:text-gray-300">

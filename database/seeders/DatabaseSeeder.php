@@ -19,21 +19,24 @@ class DatabaseSeeder extends Seeder
         }
 
         // Create permissions and assign to roles
-        $permissions = ['manage-settings', 'manage-vendors', 'manage-campaigns', 'manage-finance', 'manage-products'];
+        $permissions = ['manage-settings', 'manage-vendors', 'manage-campaigns', 'manage-emails', 'manage-finance', 'manage-products'];
         foreach ($permissions as $perm) {
             Permission::firstOrCreate(['name' => $perm]);
         }
 
+        // administrator: full access
         $adminRole = Role::where('name', 'administrator')->first();
         $adminRole->syncPermissions($permissions);
 
+        // manager: everything except manage-settings
         $managerRole = Role::where('name', 'manager')->first();
-        $managerRole->syncPermissions(['manage-vendors', 'manage-campaigns', 'manage-finance', 'manage-products']);
+        $managerRole->syncPermissions(['manage-vendors', 'manage-campaigns', 'manage-emails', 'manage-finance', 'manage-products']);
 
+        // staff: vendors, products, emails (no campaigns, no finance, no settings)
         $staffRole = Role::where('name', 'staff')->first();
-        $staffRole->syncPermissions(['manage-vendors', 'manage-products']);
+        $staffRole->syncPermissions(['manage-vendors', 'manage-products', 'manage-emails']);
 
-        // viewer gets no permissions
+        // viewer: read-only, no permissions (can view pages but cannot create/edit/delete)
 
         $admin = User::firstOrCreate(
             ['email' => 'admin@wholesale.com'],
