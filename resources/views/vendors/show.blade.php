@@ -357,28 +357,6 @@
                             </td>
                         </tr>
 
-                        <!-- Edit Product Modal -->
-                        <div x-data="{ show: false }" @open-edit-product-{{ $product->id }}.window="show = true" @keydown.escape.window="show = false" x-cloak>
-                            <div x-show="show" x-transition.opacity class="fixed inset-0 z-50 bg-black/50" @click="show = false"></div>
-                            <div x-show="show" x-transition class="fixed inset-0 z-50 flex items-center justify-center p-4" @click.self="show = false">
-                                <div class="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
-                                    <div class="flex items-center justify-end px-4 py-2.5 border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-800 z-10">
-                                        <button @click="show = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
-                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-                                        </button>
-                                    </div>
-                                    <form method="POST" action="{{ route('products.update', $product->id) }}" class="p-4 space-y-3">
-                                        @csrf
-                                        @method('PUT')
-                                        @include('vendors._product_form', ['product' => $product, 'categories' => $categories])
-                                        <div class="flex items-center justify-end gap-2 pt-1 border-t border-gray-100 dark:border-gray-700">
-                                            <button type="button" @click="show = false" class="px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">Cancel</button>
-                                            <button type="submit" class="px-3 py-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg">Update Product</button>
-                                        </div>
-                                    </form>
-                                </div>
-                            </div>
-                        </div>
                         @endforeach
                     </tbody>
                 </table>
@@ -391,6 +369,32 @@
                 <div><span class="text-gray-500">Avg Margin:</span> <span class="font-semibold text-gray-800 dark:text-gray-200">{{ number_format($products->avg('margin_percent'), 1) }}%</span></div>
                 <div><span class="text-gray-500">Avg Profit:</span> <span class="font-semibold text-gray-800 dark:text-gray-200">${{ number_format($products->avg('net_profit'), 2) }}</span></div>
             </div>
+
+            <!-- Edit Product Modals (outside table for valid HTML) -->
+            @foreach($products as $product)
+            <div x-data="{ show: false }" @open-edit-product-{{ $product->id }}.window="show = true" @keydown.escape.window="show = false" x-cloak>
+                <div x-show="show" x-transition.opacity class="fixed inset-0 z-50 bg-black/50" @click="show = false"></div>
+                <div x-show="show" x-transition class="fixed inset-0 z-50 flex items-center justify-center p-4" @click.self="show = false">
+                    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+                        <div class="flex items-center justify-end px-4 py-2.5 border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-800 z-10">
+                            <button @click="show = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                            </button>
+                        </div>
+                        <form method="POST" action="{{ route('products.update', $product->id) }}" class="p-4 space-y-3">
+                            @csrf
+                            @method('PUT')
+                            @include('vendors._product_form', ['product' => $product, 'categories' => $categories])
+                            <div class="flex items-center justify-end gap-2 pt-1 border-t border-gray-100 dark:border-gray-700">
+                                <button type="button" @click="show = false" class="px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">Cancel</button>
+                                <button type="submit" class="px-3 py-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg">Update Product</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            @endforeach
+
             @else
             <x-empty-state icon="document" title="No products yet" description="Add products to track buying price, FBA fees, margins, and profitability for this vendor." />
             @endif
