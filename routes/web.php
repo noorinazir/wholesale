@@ -119,6 +119,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('finance/purchase-orders', [FinanceController::class, 'purchaseOrderIndex'])->name('finance.po.index');
     Route::get('finance/purchase-orders/create', [FinanceController::class, 'purchaseOrderCreate'])->name('finance.po.create')->middleware('can:manage-finance');
     Route::post('finance/purchase-orders', [FinanceController::class, 'purchaseOrderStore'])->name('finance.po.store')->middleware('can:manage-finance');
+    Route::get('finance/purchase-orders/{id}/edit', [FinanceController::class, 'purchaseOrderEdit'])->name('finance.po.edit')->middleware('can:manage-finance');
+    Route::put('finance/purchase-orders/{id}', [FinanceController::class, 'purchaseOrderUpdate'])->name('finance.po.update')->middleware('can:manage-finance');
     Route::get('finance/purchase-orders/{id}', [FinanceController::class, 'purchaseOrderShow'])->name('finance.po.show');
     Route::post('finance/purchase-orders/{id}/status', [FinanceController::class, 'purchaseOrderUpdateStatus'])->name('finance.po.status')->middleware('can:manage-finance');
     Route::post('finance/purchase-orders/{id}/payment', [FinanceController::class, 'purchaseOrderUpdatePayment'])->name('finance.po.payment')->middleware('can:manage-finance');

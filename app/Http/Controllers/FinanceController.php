@@ -344,6 +344,162 @@ class FinanceController extends Controller
         return redirect()->route('finance.po.show', $po->id)->with('status', 'Purchase order created.');
     }
 
+    public function purchaseOrderEdit($id)
+    {
+        $po = PurchaseOrder::with(['vendor', 'items.product'])->findOrFail($id);
+
+        if (!in_array($po->status, ['draft', 'submitted'])) {
+            return redirect()->route('finance.po.show', $po->id)
+                ->with('error', 'Only draft or submitted POs can be edited.');
+        }
+
+        $vendors = Vendor::orderBy('brand_name')->get(['id', 'brand_name']);
+        $products = Product::with('vendor:id,brand_name')->orderBy('product_name')->get();
+
+        $productMap = $products->mapWithKeys(function ($p) {
+            return [$p->id => [
+                'id' => $p->id,
+                'name' => $p->product_name,
+                'asin' => $p->asin ?? '',
+                'upc' => $p->upc ?? '',
+                'vendor_id' => $p->vendor_id,
+                'vendor_name' => $p->vendor?->brand_name ?? '',
+                'buying_price' => (float)$p->buying_price,
+                'shipping_cost' => (float)$p->shipping_cost,
+                'labeling_cost' => (float)$p->labeling_cost,
+                'other_costs' => (float)$p->other_costs,
+            ]];
+        });
+
+        $existingItems = $po->items->map(function ($item) {
+            return [
+                'id' => $item->id,
+                'product_id' => $item->product_id ?? '',
+                'product_name' => $item->product_name,
+                'asin' => $item->asin ?? '',
+                'upc' => $item->upc ?? '',
+                'qty' => $item->quantity_ordered,
+                'unit_cost' => (float)$item->unit_cost,
+                'unit_shipping' => (float)$item->unit_shipping,
+                'unit_labeling' => (float)$item->unit_labeling,
+                'unit_other_costs' => (float)$item->unit_other_costs,
+            ];
+        });
+
+        return view('finance.purchase-order-edit', [
+            'po' => $po,
+            'vendors' => $vendors,
+            'products' => $products,
+            'productMap' => $productMap,
+            'existingItems' => $existingItems,
+        ]);
+    }
+
+    public function purchaseOrderUpdate(Request $request, $id)
+    {
+        $po = PurchaseOrder::with('items')->findOrFail($id);
+
+        if (!in_array($po->status, ['draft', 'submitted'])) {
+            return redirect()->route('finance.po.show', $po->id)
+                ->with('error', 'Only draft or submitted POs can be edited.');
+        }
+
+        $validated = $request->validate([
+            'vendor_id' => 'required|exists:vendors,id',
+            'order_date' => 'required|date',
+            'expected_delivery_date' => 'nullable|date',
+            'status' => 'required|in:draft,submitted,confirmed',
+            'payment_status' => 'required|in:unpaid,partial_paid,paid,refunded',
+            'payment_method' => 'nullable|string',
+            'payment_terms' => 'nullable|string',
+            'shipping_cost' => 'nullable|numeric|min:0',
+            'tax_amount' => 'nullable|numeric|min:0',
+            'discount_amount' => 'nullable|numeric|min:0',
+            'amount_paid' => 'nullable|numeric|min:0',
+            'notes' => 'nullable|string',
+            'items' => 'required|array|min:1',
+            'items.*.product_id' => 'nullable|exists:products,id',
+            'items.*.product_name' => 'required|string',
+            'items.*.asin' => 'nullable|string',
+            'items.*.upc' => 'nullable|string',
+            'items.*.quantity_ordered' => 'required|integer|min:1',
+            'items.*.unit_cost' => 'required|numeric|min:0',
+            'items.*.unit_shipping' => 'nullable|numeric|min:0',
+            'items.*.unit_labeling' => 'nullable|numeric|min:0',
+            'items.*.unit_other_costs' => 'nullable|numeric|min:0',
+            'items.*.notes' => 'nullable|string',
+        ]);
+
+        $po->update([
+            'vendor_id' => $validated['vendor_id'],
+            'order_date' => $validated['order_date'],
+            'expected_delivery_date' => $validated['expected_delivery_date'] ?? null,
+            'status' => $validated['status'],
+            'payment_status' => $validated['payment_status'],
+            'payment_method' => $validated['payment_method'] ?? null,
+            'payment_terms' => $validated['payment_terms'] ?? null,
+            'shipping_cost' => $validated['shipping_cost'] ?? 0,
+            'tax_amount' => $validated['tax_amount'] ?? 0,
+            'discount_amount' => $validated['discount_amount'] ?? 0,
+            'amount_paid' => $validated['amount_paid'] ?? 0,
+            'notes' => $validated['notes'] ?? null,
+        ]);
+
+        $existingItemIds = $po->items->pluck('id')->toArray();
+        $submittedItemIds = [];
+        $receivedQtyMap = $po->items->pluck('quantity_received', 'id')->toArray();
+
+        foreach ($validated['items'] as $itemKey => $item) {
+            $lineTotal = $item['quantity_ordered'] * $item['unit_cost'];
+            $itemId = is_numeric($itemKey) ? (int)$itemKey : null;
+
+            if ($itemId && in_array($itemId, $existingItemIds)) {
+                $submittedItemIds[] = $itemId;
+                PurchaseOrderItem::where('id', $itemId)->update([
+                    'product_id' => $item['product_id'] ?? null,
+                    'product_name' => $item['product_name'],
+                    'asin' => $item['asin'] ?? null,
+                    'upc' => $item['upc'] ?? null,
+                    'quantity_ordered' => $item['quantity_ordered'],
+                    'unit_cost' => $item['unit_cost'],
+                    'line_total' => $lineTotal,
+                    'unit_shipping' => $item['unit_shipping'] ?? 0,
+                    'unit_labeling' => $item['unit_labeling'] ?? 0,
+                    'unit_other_costs' => $item['unit_other_costs'] ?? 0,
+                    'notes' => $item['notes'] ?? null,
+                ]);
+            } else {
+                $newItem = PurchaseOrderItem::create([
+                    'purchase_order_id' => $po->id,
+                    'product_id' => $item['product_id'] ?? null,
+                    'product_name' => $item['product_name'],
+                    'asin' => $item['asin'] ?? null,
+                    'upc' => $item['upc'] ?? null,
+                    'quantity_ordered' => $item['quantity_ordered'],
+                    'quantity_received' => 0,
+                    'unit_cost' => $item['unit_cost'],
+                    'line_total' => $lineTotal,
+                    'unit_shipping' => $item['unit_shipping'] ?? 0,
+                    'unit_labeling' => $item['unit_labeling'] ?? 0,
+                    'unit_other_costs' => $item['unit_other_costs'] ?? 0,
+                    'notes' => $item['notes'] ?? null,
+                ]);
+                $submittedItemIds[] = $newItem->id;
+            }
+        }
+
+        $itemsToDelete = array_diff($existingItemIds, $submittedItemIds);
+        if ($itemsToDelete) {
+            PurchaseOrderItem::whereIn('id', $itemsToDelete)->delete();
+        }
+
+        $po->refresh();
+        $po->recalculate();
+
+        $this->auditLog->log('updated', 'PurchaseOrder', $po->po_number);
+        return redirect()->route('finance.po.show', $po->id)->with('status', 'Purchase order updated.');
+    }
+
     public function purchaseOrderUpdateStatus(Request $request, $id)
     {
         $po = PurchaseOrder::with('items')->findOrFail($id);

@@ -14,6 +14,11 @@
     @endphp
 
     <x-page-header title="{{ $po->po_number }}" :back="route('finance.po.index')">
+        @if(in_array($po->status, ['draft', 'submitted']) && \Illuminate\Support\Facades\Gate::check('manage-finance'))
+        <x-button variant="primary" href="{{ route('finance.po.edit', $po->id) }}">
+            Edit PO
+        </x-button>
+        @endif
         <x-button variant="secondary" href="{{ route('vendors.show', $po->vendor->id) }}">
             View Vendor
         </x-button>

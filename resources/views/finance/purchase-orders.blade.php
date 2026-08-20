@@ -89,6 +89,7 @@
                             <th class="px-4 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Items</th>
                             <th class="px-4 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Status</th>
                             <th class="px-4 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Payment</th>
+                            <th class="px-4 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Actions</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-100 dark:divide-gray-700/50">
@@ -112,10 +113,17 @@
                             <td class="px-4 py-3 text-center">
                                 <span class="text-xs font-medium {{ $paymentColors[$po->payment_status] ?? '' }}">{{ ucfirst(str_replace('_', ' ', $po->payment_status)) }}</span>
                             </td>
+                            <td class="px-4 py-3 text-center">
+                                @if(in_array($po->status, ['draft', 'submitted']) && \Illuminate\Support\Facades\Gate::check('manage-finance'))
+                                <a href="{{ route('finance.po.edit', $po->id) }}" class="text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-medium">Edit</a>
+                                @else
+                                <span class="text-xs text-gray-400">—</span>
+                                @endif
+                            </td>
                         </tr>
                         @empty
                         <tr>
-                            <td colspan="8" class="px-4 py-16 text-center">
+                            <td colspan="9" class="px-4 py-16 text-center">
                                 <div class="text-sm text-gray-500 dark:text-gray-400">No purchase orders yet. Create your first PO to start tracking orders.</div>
                             </td>
                         </tr>
