@@ -280,27 +280,81 @@
         </div>
     </div>
 
-    <!-- Add Product Modal (Vendor Picker) -->
+    <!-- Add Product Modal (Full inline form) -->
     <div x-data="{ show: false }" @open-add-product.window="show = true" @keydown.escape.window="show = false" x-cloak>
         <div x-show="show" x-transition.opacity class="fixed inset-0 z-50 bg-black/50" @click="show = false"></div>
         <div x-show="show" x-transition class="fixed inset-0 z-50 flex items-center justify-center p-4" @click.self="show = false">
-            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-md">
-                <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+                <div class="flex items-center justify-between px-4 py-2.5 border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-800 z-10">
                     <h3 class="text-sm font-semibold text-gray-800 dark:text-gray-200">Add Product</h3>
                     <button @click="show = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                     </button>
                 </div>
-                <div class="p-4 space-y-3">
-                    <p class="text-sm text-gray-500 dark:text-gray-400">Select a vendor to add a product to:</p>
-                    <select onchange="if(this.value) window.location.href = this.value" class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
-                        <option value="">Choose a vendor...</option>
-                        @foreach($vendors as $vendor)
-                        <option value="{{ route('vendors.show', $vendor->id) }}">{{ $vendor->brand_name }}</option>
-                        @endforeach
-                    </select>
-                </div>
+                <form method="POST" action="{{ route('products.store') }}" class="p-4 space-y-3">
+                    @csrf
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Vendor *</label>
+                        <select name="vendor_id" required class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                            <option value="">Select a vendor...</option>
+                            @foreach($vendors as $vendor)
+                            <option value="{{ $vendor->id }}">{{ $vendor->brand_name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    @include('vendors._product_form', ['product' => null, 'categories' => $categories, 'hideScript' => true])
+                    <div class="flex items-center justify-end gap-2 pt-1 border-t border-gray-100 dark:border-gray-700">
+                        <button type="button" @click="show = false" class="px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">Cancel</button>
+                        <button type="submit" name="add_another" value="1" class="px-3 py-1.5 text-sm font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 dark:text-indigo-400 dark:bg-indigo-900/30 dark:hover:bg-indigo-900/50 rounded-lg transition-colors">
+                            Save & Add Another
+                        </button>
+                        <button type="submit" class="px-3 py-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg">Add Product</button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
+    @push('scripts')
+    <script>
+        function productCalculator() {
+            return {
+                showAdvanced: false,
+                asin: '',
+                asinWarning: '',
+                buyingPrice: 0,
+                fbaFee: 0,
+                shippingCost: 0,
+                labelingCost: 0,
+                otherCosts: 0,
+                operationCost: 0,
+                sellPrice: 0,
+                referralPercent: 15.00,
+                existingAsins: @json(\App\Models\Product::whereNotNull('asin')->pluck('product_name', 'asin')->toArray()),
+                get totalCost() {
+                    return (this.buyingPrice || 0) + (this.fbaFee || 0) + (this.shippingCost || 0) +
+                           (this.labelingCost || 0) + (this.otherCosts || 0) + (this.operationCost || 0);
+                },
+                get referralFee() {
+                    return (this.sellPrice || 0) * (this.referralPercent || 0) / 100;
+                },
+                get netProfit() {
+                    return (this.sellPrice || 0) - this.totalCost - this.referralFee;
+                },
+                get marginPercent() {
+                    return (this.sellPrice || 0) > 0 ? (this.netProfit / (this.sellPrice || 0)) * 100 : 0;
+                },
+                get roiPercent() {
+                    return (this.buyingPrice || 0) > 0 ? (this.netProfit / (this.buyingPrice || 0)) * 100 : 0;
+                },
+                checkAsin() {
+                    if (this.asin && this.existingAsins[this.asin]) {
+                        this.asinWarning = 'Warning: ASIN ' + this.asin + ' already exists as "' + this.existingAsins[this.asin] + '"';
+                    } else {
+                        this.asinWarning = '';
+                    }
+                }
+            }
+        }
+    </script>
+    @endpush
 </x-app-layout>

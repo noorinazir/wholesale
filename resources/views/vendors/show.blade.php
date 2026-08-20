@@ -408,7 +408,7 @@
                     </div>
                     <form method="POST" action="{{ route('products.create', $vendor->id) }}" class="p-4 space-y-3">
                         @csrf
-                        @include('vendors._product_form', ['product' => null, 'categories' => $categories])
+                        @include('vendors._product_form', ['product' => null, 'categories' => $categories, 'hideScript' => true])
                         <div class="flex items-center justify-end gap-2 pt-1 border-t border-gray-100 dark:border-gray-700">
                             <button type="button" @click="show = false" class="px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">Cancel</button>
                             <button type="submit" class="px-3 py-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg">Add Product</button>

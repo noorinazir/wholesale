@@ -250,6 +250,11 @@ class ApplicationController extends Controller
 
         $vendor = Vendor::create($validated);
         $this->auditLog->log('created', 'Vendor', $vendor->brand_name);
+
+        if ($request->has('add_another')) {
+            return back()->with('status', "Vendor '{$vendor->brand_name}' created. Add another below.")->withInput();
+        }
+
         return redirect()->route('vendors.show', $vendor->id)->with('status', 'Vendor created successfully.');
     }
 
@@ -1114,6 +1119,35 @@ class ApplicationController extends Controller
 
         $this->auditLog->log('created', 'Product', $product->product_name);
         return back()->with('status', 'Product added.');
+    }
+
+    public function createProductStandalone(ProductRequest $request)
+    {
+        $validated = $request->validated();
+
+        $request->validate([
+            'vendor_id' => 'required|exists:vendors,id',
+        ]);
+
+        $validated['vendor_id'] = $request->input('vendor_id');
+
+        if (!empty($validated['asin'])) {
+            $existing = \App\Models\Product::where('asin', $validated['asin'])->first();
+            if ($existing) {
+                return back()->with('error', "A product with ASIN {$validated['asin']} already exists: {$existing->product_name}")->withInput();
+            }
+        }
+
+        $product = \App\Models\Product::create($validated);
+        $product->recalculate();
+
+        $this->auditLog->log('created', 'Product', $product->product_name);
+
+        if ($request->has('add_another')) {
+            return back()->with('status', "Product '{$product->product_name}' added. Add another below.");
+        }
+
+        return redirect()->route('products.show', $product->id)->with('status', 'Product added.');
     }
 
     public function updateProduct(ProductRequest $request, $id)

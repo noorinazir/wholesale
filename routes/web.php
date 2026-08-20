@@ -104,6 +104,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('products', [ApplicationController::class, 'productIndex'])->name('products.index');
     Route::get('products/{id}', [ApplicationController::class, 'showProduct'])->name('products.show');
     Route::post('vendors/{vendorId}/products', [ApplicationController::class, 'createProduct'])->name('products.create');
+    Route::post('products', [ApplicationController::class, 'createProductStandalone'])->name('products.store');
     Route::put('products/{id}', [ApplicationController::class, 'updateProduct'])->name('products.update');
     Route::delete('products/{id}', [ApplicationController::class, 'deleteProduct'])->name('products.destroy');
     Route::post('products/bulk', [ApplicationController::class, 'bulkProductAction'])->name('products.bulk');
