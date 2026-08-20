@@ -81,11 +81,10 @@ if [ -n "$KIMI_API_KEY" ]; then
     fi
 fi
 
-# Run migrations (continue even if one fails, so the app stays up)
-php artisan migrate --force || echo "WARNING: Some migrations failed. Check logs."
-
-# Run base seeder (creates admin user + system settings + RBAC permissions)
-php artisan db:seed --class=DatabaseSeeder --force
+# Run migrations fresh (drops all tables and re-creates from scratch)
+# Using fresh because the Neon DB was just set up and may have partial/failed migrations
+# TODO: Switch back to "php artisan migrate --force" once the DB is stable with real data
+php artisan migrate:fresh --force --seed || echo "WARNING: migrate:fresh failed. Check logs."
 
 # Clear any stale cache then re-cache for production
 php artisan optimize:clear 2>/dev/null || true
