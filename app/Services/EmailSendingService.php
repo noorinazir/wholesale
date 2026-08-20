@@ -190,9 +190,10 @@ class EmailSendingService
         $password = $smtp->getDecryptedPassword();
 
         // Use Resend API if API key is set (works on Render free plan where SMTP ports are blocked)
-        if (env('RESEND_API_KEY')) {
+        // Use config() not env() — env() returns null after config:cache
+        $resendKey = config('services.resend.key');
+        if ($resendKey) {
             Config::set('mail.default', 'resend');
-            Config::set('services.resend.key', env('RESEND_API_KEY'));
         } else {
             Config::set('mail.default', 'smtp');
             Config::set('mail.mailers.smtp.host', $smtp->host);
@@ -313,9 +314,10 @@ class EmailSendingService
         $encryption = $smtp->encryption === 'none' ? null : $smtp->encryption;
 
         // Use Resend API if available, otherwise fall back to SMTP
-        if (env('RESEND_API_KEY')) {
+        // Use config() not env() — env() returns null after config:cache
+        $resendKey = config('services.resend.key');
+        if ($resendKey) {
             Config::set('mail.default', 'resend');
-            Config::set('services.resend.key', env('RESEND_API_KEY'));
         } else {
             Config::set('mail.default', 'smtp');
             Config::set('mail.mailers.smtp.host', $smtp->host);
@@ -327,7 +329,8 @@ class EmailSendingService
         Config::set('mail.from.address', $smtp->from_email);
         Config::set('mail.from.name', $smtp->from_name);
 
-        Log::info('SMTP test attempt', [
+        Log::info('Email test attempt', [
+            'transport' => $resendKey ? 'resend' : 'smtp',
             'host' => $smtp->host,
             'port' => $smtp->port,
             'encryption' => $encryption,
@@ -350,15 +353,17 @@ class EmailSendingService
                 'last_test_success' => true,
             ]);
 
-            return ['success' => true, 'message' => 'Test email sent successfully to ' . $testEmail];
+            $transport = $resendKey ? 'Resend API' : 'SMTP';
+            return ['success' => true, 'message' => "Test email sent successfully via {$transport} to " . $testEmail];
         } catch (\Exception $e) {
-            Log::error('SMTP test failed', ['error' => $e->getMessage()]);
+            Log::error('Email test failed', ['error' => $e->getMessage()]);
             $smtp->update([
                 'last_tested_at' => now(),
                 'last_test_success' => false,
             ]);
 
-            return ['success' => false, 'message' => 'SMTP test failed: ' . $e->getMessage()];
+            $transport = $resendKey ? 'Resend API' : 'SMTP';
+            return ['success' => false, 'message' => "{$transport} test failed: " . $e->getMessage()];
         }
     }
 
