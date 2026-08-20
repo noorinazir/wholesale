@@ -11,6 +11,7 @@ if [ ! -f .env ]; then
 fi
 
 # Create SQLite database in /var/data (persistent disk on Render)
+mkdir -p /var/data
 touch /var/data/database.sqlite
 chmod 666 /var/data/database.sqlite
 
