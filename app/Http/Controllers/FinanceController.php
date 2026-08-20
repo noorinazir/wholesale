@@ -677,7 +677,7 @@ class FinanceController extends Controller
                 $poId = null;
                 if ($product) {
                     $po = PurchaseOrder::where('vendor_id', $product->vendor_id)
-                        ->whereIn('status', ['confirmed', 'partial'])
+                        ->whereIn('status', ['confirmed', 'partial_received', 'in_production', 'shipped'])
                         ->latest()->first();
                     $poId = $po?->id;
                 }
@@ -878,6 +878,24 @@ class FinanceController extends Controller
             }
         }
 
+        // If cancelled: restock (stock was deducted at sale creation)
+        if ($validated['order_status'] === 'cancelled' && $order->product_id) {
+            $product = Product::find($order->product_id);
+            if ($product) {
+                $product->adjustStock($order->quantity, 'add');
+            }
+        }
+
+        // If status changes FROM cancelled/returned/refunded back to active: re-deduct stock
+        if (in_array($validated['order_status'], ['pending', 'processing', 'shipped', 'delivered'])
+            && in_array($order->getOriginal('order_status'), ['cancelled', 'returned', 'refunded'])
+            && $order->product_id) {
+            $product = Product::find($order->product_id);
+            if ($product) {
+                $product->adjustStock($order->quantity, 'subtract');
+            }
+        }
+
         $order->recalculate();
         $this->auditLog->log('updated', 'AmazonOrder', "Order #{$order->id} → {$validated['order_status']}");
         return back()->with('status', 'Order status updated.');
@@ -886,8 +904,10 @@ class FinanceController extends Controller
     public function salesShow($id)
     {
         $order = AmazonOrder::with(['product.vendor', 'vendor', 'purchaseOrder.vendor'])->findOrFail($id);
-        $expenses = Expense::where('product_id', $order->product_id)
-            ->orWhere('vendor_id', $order->vendor_id)
+        $expenses = Expense::where(function ($q) use ($order) {
+            $q->where('product_id', $order->product_id)
+              ->orWhere('vendor_id', $order->vendor_id);
+        })
             ->whereBetween('expense_date', [$order->order_date->copy()->subDays(7), $order->order_date->copy()->addDays(7)])
             ->orderBy('expense_date')
             ->get();
@@ -917,7 +937,7 @@ class FinanceController extends Controller
     {
         $order = AmazonOrder::findOrFail($id);
         $validated = $request->validate([
-            'amazon_order_id' => 'nullable|string',
+            'amazon_order_id' => 'nullable|string|unique:amazon_orders,amazon_order_id,' . $id,
             'product_id' => 'nullable|exists:products,id',
             'vendor_id' => 'nullable|exists:vendors,id',
             'product_name' => 'required|string',
@@ -988,6 +1008,19 @@ class FinanceController extends Controller
         ]);
 
         $order->recalculate();
+
+        // Adjust stock for quantity difference if product is linked and order is active
+        if ($order->product_id && !in_array($validated['order_status'], ['cancelled', 'returned', 'refunded'])) {
+            $oldQty = $order->getOriginal('quantity');
+            $newQty = $quantity;
+            $diff = $newQty - $oldQty;
+            if ($diff != 0) {
+                $product = Product::find($order->product_id);
+                if ($product) {
+                    $product->adjustStock(abs($diff), $diff > 0 ? 'subtract' : 'add');
+                }
+            }
+        }
 
         $this->auditLog->log('updated', 'AmazonOrder', "Order #{$order->id} edited");
         return redirect()->route('finance.sales.show', $order->id)->with('status', 'Sale updated.');
@@ -1321,7 +1354,7 @@ class FinanceController extends Controller
                 'total_revenue' => $totalRevenue,
                 'tax_state' => $taxState ?: null,
                 'tax_rate' => $taxData['rate'],
-                'tax_amount' => $taxData['amount'],
+                'tax_collected' => $taxData['amount'],
             ]);
 
             $order->recalculate();
@@ -1329,7 +1362,7 @@ class FinanceController extends Controller
             // Auto-generate expenses and deduct stock
             $this->generateSaleExpenses($order);
             if ($product) {
-                $product->adjustStock(-$quantity);
+                $product->adjustStock($quantity, 'subtract');
             }
 
             $imported++;
