@@ -1114,6 +1114,20 @@ class ApplicationController extends Controller
 
         $validated['vendor_id'] = $vendor->id;
 
+        $numericDefaults = [
+            'buying_price' => 0, 'fba_fee' => 0, 'shipping_cost' => 0,
+            'labeling_cost' => 0, 'other_costs' => 0, 'operation_cost' => 0,
+            'amazon_sell_price' => 0, 'referral_fee_percent' => 15.00,
+            'number_of_sellers' => 0, 'bsr_rank' => null,
+            'review_count' => null, 'review_rating' => null,
+        ];
+        foreach ($numericDefaults as $field => $default) {
+            if (!isset($validated[$field]) || $validated[$field] === '') {
+                $validated[$field] = $default;
+            }
+        }
+        $validated = array_filter($validated, fn($v) => $v !== null);
+
         try {
             $product = \App\Models\Product::create($validated);
             $product->recalculate();
@@ -1138,6 +1152,20 @@ class ApplicationController extends Controller
         ]);
 
         $validated['vendor_id'] = $request->input('vendor_id');
+
+        $numericDefaults = [
+            'buying_price' => 0, 'fba_fee' => 0, 'shipping_cost' => 0,
+            'labeling_cost' => 0, 'other_costs' => 0, 'operation_cost' => 0,
+            'amazon_sell_price' => 0, 'referral_fee_percent' => 15.00,
+            'number_of_sellers' => 0, 'bsr_rank' => null,
+            'review_count' => null, 'review_rating' => null,
+        ];
+        foreach ($numericDefaults as $field => $default) {
+            if (!isset($validated[$field]) || $validated[$field] === '') {
+                $validated[$field] = $default;
+            }
+        }
+        $validated = array_filter($validated, fn($v) => $v !== null);
 
         if (!empty($validated['asin'])) {
             $existing = \App\Models\Product::where('asin', $validated['asin'])->first();
@@ -1170,6 +1198,19 @@ class ApplicationController extends Controller
     {
         $product = \App\Models\Product::findOrFail($id);
         $validated = $request->validated();
+
+        $numericDefaults = [
+            'buying_price' => 0, 'fba_fee' => 0, 'shipping_cost' => 0,
+            'labeling_cost' => 0, 'other_costs' => 0, 'operation_cost' => 0,
+            'amazon_sell_price' => 0, 'referral_fee_percent' => 15.00,
+            'number_of_sellers' => 0,
+        ];
+        foreach ($numericDefaults as $field => $default) {
+            if (array_key_exists($field, $validated) && ($validated[$field] === '' || $validated[$field] === null)) {
+                $validated[$field] = $default;
+            }
+        }
+        $validated = array_filter($validated, fn($v) => $v !== null);
 
         try {
             $product->update($validated);

@@ -80,8 +80,8 @@ if [ -n "$KIMI_API_KEY" ]; then
     fi
 fi
 
-# Run migrations (continue even if some already applied)
-php artisan migrate --force
+# Run migrations (continue even if one fails, so the app stays up)
+php artisan migrate --force || echo "WARNING: Some migrations failed. Check logs."
 
 # Run base seeder (creates admin user + system settings + RBAC permissions)
 php artisan db:seed --class=DatabaseSeeder --force
