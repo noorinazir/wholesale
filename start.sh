@@ -1,19 +1,12 @@
 #!/bin/bash
 set -e
 
-# Clear any stale cached config/routes/views from previous deploy
-php artisan optimize:clear 2>/dev/null || true
-
-# Move storage to persistent disk so sessions/cache/survive restarts
-if [ ! -d /var/data/storage ]; then
-    mkdir -p /var/data/storage
-    cp -r storage/* /var/data/storage/ 2>/dev/null || true
-fi
-rm -rf storage
-ln -sf /var/data/storage storage
-
-# Ensure all storage subdirectories exist
-mkdir -p storage/app/public storage/framework/cache/data storage/framework/sessions storage/framework/views storage/logs
+# Ensure storage directories exist and are writable by Apache
+mkdir -p storage/app/public \
+         storage/framework/cache/data \
+         storage/framework/sessions \
+         storage/framework/views \
+         storage/logs
 chown -R www-data:www-data storage bootstrap/cache
 chmod -R 775 storage bootstrap/cache
 
@@ -93,7 +86,8 @@ php artisan migrate --force
 # Run base seeder (creates admin user + system settings + RBAC permissions)
 php artisan db:seed --class=DatabaseSeeder --force
 
-# Cache config and routes for production (don't cache views - Volt handles its own)
+# Clear any stale cache then re-cache for production
+php artisan optimize:clear 2>/dev/null || true
 php artisan config:cache
 php artisan route:cache
 
