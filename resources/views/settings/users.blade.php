@@ -13,16 +13,28 @@
         <x-settings-tabs active="users" />
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
             <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4">Add User</h3>
+            @if (session('status'))
+                <div class="mb-4 rounded-md bg-green-50 dark:bg-green-900/30 p-3 text-sm text-green-700 dark:text-green-300">{{ session('status') }}</div>
+            @endif
+            @if ($errors->any())
+                <div class="mb-4 rounded-md bg-red-50 dark:bg-red-900/30 p-3 text-sm text-red-700 dark:text-red-300">
+                    <ul class="list-disc list-inside">
+                        @foreach ($errors->all() as $error)
+                            <li>{{ $error }}</li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
             <form method="POST" action="{{ route('settings.users') }}" class="grid grid-cols-1 md:grid-cols-4 gap-3">
                 @csrf
-                <input type="text" name="name" placeholder="Name" required class="rounded-md border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300">
-                <input type="email" name="email" placeholder="Email" required class="rounded-md border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300">
+                <input type="text" name="name" placeholder="Name" value="{{ old('name') }}" required class="rounded-md border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300">
+                <input type="email" name="email" placeholder="Email" value="{{ old('email') }}" required class="rounded-md border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300">
                 <input type="password" name="password" placeholder="Password (min 8, A-Z, a-z, 0-9, special)" required class="rounded-md border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300">
                 <select name="role" class="rounded-md border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300">
-                    <option value="administrator">Administrator</option>
-                    <option value="manager">Manager</option>
-                    <option value="staff">Staff</option>
-                    <option value="viewer">Viewer</option>
+                    <option value="administrator" {{ old('role') === 'administrator' ? 'selected' : '' }}>Administrator</option>
+                    <option value="manager" {{ old('role') === 'manager' ? 'selected' : '' }}>Manager</option>
+                    <option value="staff" {{ old('role') === 'staff' ? 'selected' : '' }}>Staff</option>
+                    <option value="viewer" {{ old('role') === 'viewer' ? 'selected' : '' }}>Viewer</option>
                 </select>
                 <button type="submit" class="md:col-span-4 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700">Add User</button>
             </form>

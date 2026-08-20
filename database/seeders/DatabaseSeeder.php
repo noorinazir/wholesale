@@ -7,7 +7,6 @@ use App\Models\SystemSetting;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\Models\Permission;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\Hash;
 
 class DatabaseSeeder extends Seeder
 {
@@ -42,7 +41,7 @@ class DatabaseSeeder extends Seeder
             ['email' => 'admin@wholesale.com'],
             [
                 'name' => 'Administrator',
-                'password' => Hash::make('password'),
+                'password' => 'password',
                 'is_active' => true,
                 'role' => 'administrator',
             ]

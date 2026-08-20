@@ -31,7 +31,6 @@ use App\Enums\ApprovalStatus;
 use App\Support\CategoryOptions;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Crypt;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Spatie\Permission\Models\Role;
@@ -932,7 +931,7 @@ class ApplicationController extends Controller
         $user = User::create([
             'name' => $request->name,
             'email' => $request->email,
-            'password' => Hash::make($request->password),
+            'password' => $request->password,
             'role' => $request->role,
             'is_active' => true,
         ]);
