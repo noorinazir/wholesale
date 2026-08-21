@@ -230,6 +230,92 @@ class EmailPersonalizationService
         ];
     }
 
+    public function generateTemplate(
+        string $type,
+        string $tone = 'professional',
+        ?string $customInstructions = null,
+        ?User $user = null
+    ): array {
+        if (!$this->kimiService->isConfigured()) {
+            return [
+                'success' => false,
+                'error' => 'AI is not configured. Please set the KIMI_API_KEY in AI Configuration.',
+            ];
+        }
+
+        $typeLabels = [
+            'wholesale_inquiry' => 'Wholesale Inquiry',
+            'amazon_reseller' => 'Amazon Reseller Authorization',
+            'distributor_inquiry' => 'Distributor Inquiry',
+            'catalog_request' => 'Product Catalog Request',
+            'dealer_application' => 'Dealer Application',
+            'pricing_request' => 'Pricing Request',
+        ];
+
+        $typeLabel = $typeLabels[$type] ?? 'Wholesale Inquiry';
+
+        $availableVars = '{{contact_name}}, {{brand_name}}, {{category}}, {{company_name}}, {{website}}, {{contact_person}}, {{contact_email}}, {{phone}}, {{tax_id}}, {{ein}}, {{amazon_store}}, {{signature}}, {{vendor_company}}, {{vendor_website}}, {{vendor_country}}';
+
+        $systemPrompt = "You are a B2B email template generator. Create reusable email templates using {{variable}} placeholders. The templates will be used for wholesale/vendor outreach. Use ONLY the available variables listed. Do not invent new variables. Keep the subject line concise and professional. The body should be 3-5 paragraphs, well-structured, and use a {$tone} tone. Return JSON only.";
+
+        $userPrompt = "Create a reusable email template for: {$typeLabel}\n";
+        $userPrompt .= "Tone: {$tone}\n";
+        if ($customInstructions) {
+            $userPrompt .= "Additional instructions: {$customInstructions}\n";
+        }
+        $userPrompt .= "\nAvailable variables: {$availableVars}\n";
+        $userPrompt .= "\nReturn JSON: {\"name\": \"...\", \"subject_template\": \"...\", \"body_template\": \"...\", \"description\": \"...\"}\n";
+        $userPrompt .= "The subject_template and body_template MUST use {{variable}} placeholders (e.g. {{contact_name}}, {{brand_name}}). Do NOT use real names or values.";
+
+        $messages = [
+            ['role' => 'system', 'content' => $systemPrompt],
+            ['role' => 'user', 'content' => $userPrompt],
+        ];
+
+        $result = $this->kimiService->chat($messages, ['max_tokens' => 800, 'temperature' => 0.8]);
+
+        try {
+            $this->logGeneration(null, $user, $result, $messages, 'generate_template');
+        } catch (\Exception $e) {
+            Log::error('Failed to log AI generation', ['error' => $e->getMessage()]);
+        }
+
+        if (!$result['success']) {
+            return [
+                'success' => false,
+                'error' => $result['error'] ?? 'AI generation failed',
+            ];
+        }
+
+        $parsed = $this->parseResponse($result['content']);
+
+        if (!$parsed['success']) {
+            return [
+                'success' => false,
+                'error' => $parsed['error'],
+            ];
+        }
+
+        $data = $parsed['data'];
+
+        if (empty($data['subject_template']) || empty($data['body_template'])) {
+            return [
+                'success' => false,
+                'error' => 'AI response missing subject_template or body_template',
+            ];
+        }
+
+        return [
+            'success' => true,
+            'template' => [
+                'name' => $data['name'] ?? $typeLabel . ' Template',
+                'subject_template' => $data['subject_template'],
+                'body_template' => $data['body_template'],
+                'description' => $data['description'] ?? null,
+            ],
+        ];
+    }
+
     public function generateFollowUp(
         Vendor $vendor,
         ?Company $company,

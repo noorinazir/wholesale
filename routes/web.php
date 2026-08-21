@@ -79,6 +79,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::view('templates/create', 'templates.create')->name('templates.create')->middleware('can:manage-emails');
     Route::view('templates/{id}/edit', 'templates.edit')->name('templates.edit')->middleware('can:manage-emails');
     Route::post('templates/create', [TemplateController::class, 'store'])->middleware('can:manage-emails');
+    Route::post('templates/ai-generate', [TemplateController::class, 'aiGenerate'])->name('templates.ai-generate')->middleware('can:manage-emails');
     Route::put('templates/{id}/edit', [TemplateController::class, 'update'])->middleware('can:manage-emails');
 
     // Analytics & Reports (read: view-reports)
