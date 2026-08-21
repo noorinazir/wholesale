@@ -44,18 +44,28 @@ class AppServiceProvider extends ServiceProvider
             $unreadCount = 0;
 
             if ($user) {
-                $unreadNotifications = Notification::where('user_id', $user->id)
-                    ->whereNull('read_at')
-                    ->orderBy('created_at', 'desc')
-                    ->limit(10)
-                    ->get();
+                try {
+                    $unreadNotifications = Notification::where('user_id', $user->id)
+                        ->whereNull('read_at')
+                        ->orderBy('created_at', 'desc')
+                        ->limit(10)
+                        ->get();
 
-                $unreadCount = $unreadNotifications->count();
+                    $unreadCount = $unreadNotifications->count();
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::warning('Notifications table not available: ' . $e->getMessage());
+                }
+            }
+
+            try {
+                $sendingPaused = $sendingService->isSendingPaused();
+            } catch (\Throwable $e) {
+                $sendingPaused = false;
             }
 
             $view->with([
                 'sendingService' => $sendingService,
-                'sendingPaused' => $sendingService->isSendingPaused(),
+                'sendingPaused' => $sendingPaused,
                 'unreadNotifications' => $unreadNotifications,
                 'unreadCount' => $unreadCount,
             ]);
