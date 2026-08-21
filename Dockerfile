@@ -15,8 +15,12 @@ COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 # Copy project files
 COPY . .
 
-# Install PHP dependencies
-RUN composer install --no-dev --optimize-autoloader --no-interaction
+# Install PHP dependencies (retry up to 3 times for transient GitHub API failures)
+RUN for i in 1 2 3; do \
+      composer install --no-dev --optimize-autoloader --no-interaction && break; \
+      echo "Composer install attempt $i failed, retrying in 5s..."; \
+      sleep 5; \
+    done
 
 # Install Node and build assets
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
