@@ -11,6 +11,7 @@ use App\Models\FollowUp;
 use App\Models\Notification;
 use App\Services\AI\KimiService;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 class DashboardService
 {
@@ -21,20 +22,51 @@ class DashboardService
 
     public function getDashboardData(): array
     {
+        $safe = fn(callable $cb, $default = []) => $this->safeQuery($cb, $default);
+
         return [
             'sendingService' => $this->sendingService,
-            'stats' => Cache::remember('dashboard.stats', 300, fn() => $this->getStats()),
-            'funnel' => Cache::remember('dashboard.funnel', 300, fn() => $this->getFunnel()),
-            'products' => Cache::remember('dashboard.products', 300, fn() => $this->getProductStats()),
-            'recentActivity' => Notification::where('user_id', auth()->id())->latest()->limit(8)->get(),
-            'suggestedVendors' => $this->getSuggestedVendors(),
-            'followupsScheduled' => FollowUp::where('status', 'scheduled')->count(),
-            'aiStats' => Cache::remember('dashboard.ai', 300, fn() => $this->getAiStats()),
-            'vendorBreakdown' => Cache::remember('dashboard.breakdown', 300, fn() => $this->getVendorBreakdown()),
-            'emailChartData' => Cache::remember('dashboard.email_chart', 300, fn() => $this->getEmailChartData()),
-            'vendorStatusData' => Cache::remember('dashboard.status_chart', 300, fn() => $this->getVendorStatusData()),
-            'marginAlerts' => Cache::remember('dashboard.margin_alerts', 300, fn() => $this->getMarginAlerts()),
-            'followUpsDue' => Vendor::followUpDue()->with('products')->limit(10)->get(),
+            'sendingPaused' => $safe(fn() => $this->sendingService->isSendingPaused(), false),
+            'dailySent' => $safe(fn() => $this->sendingService->getDailySentCount(), 0),
+            'dailyLimit' => $safe(fn() => $this->sendingService->getDailyLimit(), 50),
+            'hourlySent' => $safe(fn() => $this->sendingService->getHourlySentCount(), 0),
+            'hourlyLimit' => $safe(fn() => $this->sendingService->getHourlyLimit(), 10),
+            'withinSchedule' => $safe(fn() => $this->sendingService->isWithinSendingSchedule(), false),
+            'isTestMode' => $safe(fn() => $this->sendingService->isTestMode(), false),
+            'stats' => $safe(fn() => Cache::remember('dashboard.stats', 300, fn() => $this->getStats()), $this->defaultStats()),
+            'funnel' => $safe(fn() => Cache::remember('dashboard.funnel', 300, fn() => $this->getFunnel())),
+            'products' => $safe(fn() => Cache::remember('dashboard.products', 300, fn() => $this->getProductStats()), ['total' => 0, 'profitable' => 0, 'avg_margin' => 0]),
+            'recentActivity' => $safe(fn() => Notification::where('user_id', auth()->id())->latest()->limit(8)->get(), collect()),
+            'suggestedVendors' => $safe(fn() => $this->getSuggestedVendors(), collect()),
+            'followupsScheduled' => $safe(fn() => FollowUp::where('status', 'scheduled')->count(), 0),
+            'aiStats' => $safe(fn() => Cache::remember('dashboard.ai', 300, fn() => $this->getAiStats()), ['generated' => 0, 'regenerated' => 0, 'total_calls' => 0, 'cost' => 0]),
+            'vendorBreakdown' => $safe(fn() => Cache::remember('dashboard.breakdown', 300, fn() => $this->getVendorBreakdown()), ['contacted' => 0, 'not_contacted' => 0, 'opted_out' => 0, 'invalid_email' => 0]),
+            'emailChartData' => $safe(fn() => Cache::remember('dashboard.email_chart', 300, fn() => $this->getEmailChartData()), ['labels' => [], 'values' => []]),
+            'vendorStatusData' => $safe(fn() => Cache::remember('dashboard.status_chart', 300, fn() => $this->getVendorStatusData()), ['labels' => [], 'values' => []]),
+            'marginAlerts' => $safe(fn() => Cache::remember('dashboard.margin_alerts', 300, fn() => $this->getMarginAlerts()), ['unprofitable_count' => 0, 'low_margin_count' => 0, 'unprofitable' => collect(), 'low_margin' => collect()]),
+            'followUpsDue' => $safe(fn() => Vendor::followUpDue()->with('products')->limit(10)->get(), collect()),
+        ];
+    }
+
+    private function safeQuery(callable $cb, mixed $default = []): mixed
+    {
+        try {
+            return $cb();
+        } catch (\Throwable $e) {
+            Log::warning('Dashboard query failed: ' . $e->getMessage());
+            return $default;
+        }
+    }
+
+    private function defaultStats(): array
+    {
+        return [
+            'total_vendors' => 0,
+            'active_vendors' => 0,
+            'emails_sent' => 0,
+            'pending' => 0,
+            'failed' => 0,
+            'followup_due' => 0,
         ];
     }
 

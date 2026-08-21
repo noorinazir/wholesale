@@ -1,6 +1,13 @@
 <x-app-layout>
     @php
     $sendingService = $sendingService ?? app(\App\Services\EmailSendingService::class);
+    $sendingPaused = $sendingPaused ?? false;
+    $dailySent = $dailySent ?? 0;
+    $dailyLimit = $dailyLimit ?? 50;
+    $hourlySent = $hourlySent ?? 0;
+    $hourlyLimit = $hourlyLimit ?? 10;
+    $withinSchedule = $withinSchedule ?? false;
+    $isTestMode = $isTestMode ?? false;
     $stats = $stats ?? [];
     $funnel = $funnel ?? [];
     $products = $products ?? ['total' => 0, 'profitable' => 0, 'avg_margin' => 0];
@@ -230,26 +237,26 @@
                 <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
                     <div class="flex items-center justify-between mb-3">
                         <h3 class="text-sm font-semibold text-gray-800 dark:text-gray-200">Sending Status</h3>
-                        <span class="px-2 py-0.5 rounded-full text-xs font-medium {{ $sendingService->isSendingPaused() ? 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400' : 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400' }}">
-                            {{ $sendingService->isSendingPaused() ? 'Paused' : 'Active' }}
+                        <span class="px-2 py-0.5 rounded-full text-xs font-medium {{ $sendingPaused ? 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400' : 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400' }}">
+                            {{ $sendingPaused ? 'Paused' : 'Active' }}
                         </span>
                     </div>
                     <div class="space-y-2.5">
                         <div class="flex items-center justify-between">
                             <span class="text-xs text-gray-500">Daily Limit</span>
-                            <span class="text-xs font-semibold text-gray-800 dark:text-gray-200">{{ $sendingService->getDailySentCount() }} / {{ $sendingService->getDailyLimit() }}</span>
+                            <span class="text-xs font-semibold text-gray-800 dark:text-gray-200">{{ $dailySent }} / {{ $dailyLimit }}</span>
                         </div>
                         <div class="flex items-center justify-between">
                             <span class="text-xs text-gray-500">Hourly Limit</span>
-                            <span class="text-xs font-semibold text-gray-800 dark:text-gray-200">{{ $sendingService->getHourlySentCount() }} / {{ $sendingService->getHourlyLimit() }}</span>
+                            <span class="text-xs font-semibold text-gray-800 dark:text-gray-200">{{ $hourlySent }} / {{ $hourlyLimit }}</span>
                         </div>
                         <div class="flex items-center justify-between">
                             <span class="text-xs text-gray-500">Within Schedule</span>
-                            <span class="text-xs font-semibold {{ $sendingService->isWithinSendingSchedule() ? 'text-green-600' : 'text-gray-400' }}">{{ $sendingService->isWithinSendingSchedule() ? 'Yes' : 'No' }}</span>
+                            <span class="text-xs font-semibold {{ $withinSchedule ? 'text-green-600' : 'text-gray-400' }}">{{ $withinSchedule ? 'Yes' : 'No' }}</span>
                         </div>
                         <div class="flex items-center justify-between">
                             <span class="text-xs text-gray-500">Mode</span>
-                            <span class="text-xs font-semibold {{ $sendingService->isTestMode() ? 'text-orange-600' : 'text-green-600' }}">{{ $sendingService->isTestMode() ? 'Test' : 'Live' }}</span>
+                            <span class="text-xs font-semibold {{ $isTestMode ? 'text-orange-600' : 'text-green-600' }}">{{ $isTestMode ? 'Test' : 'Live' }}</span>
                         </div>
                     </div>
                 </div>
