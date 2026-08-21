@@ -30,7 +30,14 @@ class SystemSetting extends Model
             return Cache::get($cacheKey);
         }
 
-        $setting = static::where('key', $key)->first();
+        try {
+            $setting = static::where('key', $key)->first();
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('SystemSetting query failed for key "' . $key . '": ' . $e->getMessage());
+            Cache::put($cacheKey, $default, now()->addHour());
+            return $default;
+        }
+
         if (!$setting) {
             Cache::put($cacheKey, $default, now()->addHour());
             return $default;
