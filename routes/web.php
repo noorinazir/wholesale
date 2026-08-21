@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\ApplicationController;
 use App\Http\Controllers\CampaignController;
+use App\Http\Controllers\HealthController;
 use App\Http\Controllers\FinanceController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\ProductController;
@@ -13,6 +14,8 @@ use App\Http\Controllers\VendorBrandApprovalController;
 use App\Http\Controllers\VendorController;
 use App\Http\Controllers\VendorDocumentResponseController;
 use Illuminate\Support\Facades\Route;
+
+Route::get('/health', [HealthController::class, 'check'])->name('health');
 
 Route::get('/', function () {
     if (auth()->check()) {
