@@ -8,6 +8,7 @@ use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\SearchController;
+use App\Http\Controllers\Settings\AuditLogController;
 use App\Http\Controllers\Settings\CompanyDocumentController;
 use App\Http\Controllers\TemplateController;
 use App\Http\Controllers\VendorBrandApprovalController;
@@ -93,7 +94,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::view('settings/sending', 'settings.sending')->name('settings.sending')->middleware('can:manage-settings');
     Route::view('settings/users', 'settings.users')->name('settings.users')->middleware('can:manage-settings');
     Route::view('settings/system', 'settings.system')->name('settings.system')->middleware('can:manage-settings');
-    Route::view('settings/audit', 'settings.audit')->name('settings.audit')->middleware('can:manage-settings');
+    Route::get('settings/audit', [AuditLogController::class, 'index'])->name('settings.audit')->middleware('can:manage-settings');
 
     Route::post('settings/company', [ApplicationController::class, 'saveCompany'])->middleware('can:manage-settings');
     Route::post('settings/company/upload-document', [CompanyDocumentController::class, 'upload'])->middleware('can:manage-settings')->name('settings.company.upload-document');

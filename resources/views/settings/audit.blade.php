@@ -4,8 +4,7 @@
     </x-slot>
 
     @php
-    use Spatie\Activitylog\Models\Activity;
-    $logs = Activity::latest()->paginate(25);
+    $pagination = $pagination ?? null;
     @endphp
 
     <div class="space-y-6">
@@ -39,6 +38,6 @@
                 </tbody>
             </table>
         </div>
-        <div class="px-4 py-3 border-t border-gray-200 dark:border-gray-700">{{ $logs->links() }}</div>
+        <div class="px-4 py-3 border-t border-gray-200 dark:border-gray-700">{{ $pagination?->links() ?? '' }}</div>
     </div>
 </x-app-layout>
