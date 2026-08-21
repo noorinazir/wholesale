@@ -16,6 +16,11 @@
         'amazon_fees' => 'bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400',
         'fba_fees' => 'bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400',
         'amazon_referral' => 'bg-yellow-50 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400',
+        'prep' => 'bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400',
+        'inspection' => 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400',
+        'customs' => 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400',
+        'freight' => 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400',
+        'insurance' => 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400',
         'advertising' => 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400',
         'storage' => 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400',
         'returns' => 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400',
@@ -93,6 +98,7 @@
                             <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Expense #</th>
                             <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Description</th>
                             <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Category</th>
+                            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Service Vendor</th>
                             <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Date</th>
                             <th class="px-4 py-3 text-right text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Amount</th>
                             <th class="px-4 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Status</th>
@@ -116,6 +122,13 @@
                             <td class="px-4 py-3">
                                 <span class="px-2 py-0.5 text-xs rounded-md {{ $catBadgeColors[$expense->category] ?? $catBadgeColors['other'] }}">{{ $categoryLabels[$expense->category] ?? ucfirst($expense->category) }}</span>
                             </td>
+                            <td class="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">
+                                @if($expense->serviceVendor)
+                                    <span class="text-xs">{{ $expense->serviceVendor->brand_name }}</span>
+                                @else
+                                    <span class="text-xs text-gray-400">—</span>
+                                @endif
+                            </td>
                             <td class="px-4 py-3 text-sm text-gray-500">{{ $expense->expense_date->format('M d, Y') }}</td>
                             <td class="px-4 py-3 text-sm font-medium text-red-600 dark:text-red-400 text-right">${{ number_format($expense->amount, 2) }}</td>
                             <td class="px-4 py-3 text-center">
@@ -132,7 +145,7 @@
                         </tr>
                         @empty
                         <tr>
-                            <td colspan="6" class="px-4 py-16 text-center">
+                            <td colspan="7" class="px-4 py-16 text-center">
                                 <div class="text-sm text-gray-500 dark:text-gray-400">No expenses recorded yet.</div>
                             </td>
                         </tr>
@@ -193,7 +206,7 @@
                     </div>
                     <div class="grid grid-cols-2 gap-3">
                         <div>
-                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Vendor (optional)</label>
+                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Product Vendor (optional)</label>
                             <select name="vendor_id" class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm">
                                 <option value="">None</option>
                                 @foreach($vendors ?? [] as $vendor)
@@ -202,9 +215,32 @@
                             </select>
                         </div>
                         <div>
-                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Payment Method</label>
-                            <input type="text" name="payment_method" placeholder="CC, Wire..." class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm">
+                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Service Vendor (who provided the service)</label>
+                            <select name="service_vendor_id" class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm">
+                                <option value="">None</option>
+                                @foreach($vendors ?? [] as $vendor)
+                                <option value="{{ $vendor->id }}">{{ $vendor->brand_name }}</option>
+                                @endforeach
+                            </select>
                         </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Linked PO (optional)</label>
+                            <input type="number" name="purchase_order_id" min="1" placeholder="PO ID" class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Allocation Method</label>
+                            <select name="allocation_method" class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm">
+                                @foreach(\App\Models\Expense::allocationMethodLabels() as $val => $label)
+                                <option value="{{ $val }}" @selected($val === 'by_quantity')>{{ $label }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Payment Method</label>
+                        <input type="text" name="payment_method" placeholder="CC, Wire..." class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm">
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Notes</label>

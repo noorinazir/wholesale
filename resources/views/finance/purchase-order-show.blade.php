@@ -65,6 +65,12 @@
                     <div class="flex justify-between"><span class="text-gray-500">Discount</span><span class="text-green-600">-${{ number_format($po->discount_amount, 2) }}</span></div>
                     @endif
                     <div class="border-t border-gray-100 dark:border-gray-700 pt-2 flex justify-between font-semibold"><span class="text-gray-700 dark:text-gray-300">Total</span><span class="text-gray-900 dark:text-gray-100">${{ number_format($po->total_amount, 2) }}</span></div>
+                    @if($po->total_expenses > 0)
+                    <div class="flex justify-between"><span class="text-gray-500">Allocated Expenses</span><span class="text-orange-600 dark:text-orange-400">${{ number_format($po->total_expenses, 2) }}</span></div>
+                    @endif
+                    @if($po->total_landed_cost > 0)
+                    <div class="border-t border-gray-100 dark:border-gray-700 pt-2 flex justify-between font-semibold"><span class="text-gray-700 dark:text-gray-300">Landed Cost</span><span class="text-indigo-600 dark:text-indigo-400">${{ number_format($po->total_landed_cost, 2) }}</span></div>
+                    @endif
                     <div class="flex justify-between"><span class="text-gray-500">Paid</span><span class="text-green-600">${{ number_format($po->amount_paid, 2) }}</span></div>
                     <div class="flex justify-between font-semibold"><span class="text-gray-700 dark:text-gray-300">Balance Due</span><span class="{{ $po->balance_due > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600' }}">${{ $po->balanceDue }}</span></div>
                 </div>
@@ -123,6 +129,7 @@
                             <th class="px-3 py-2 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Ordered</th>
                             <th class="px-3 py-2 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Received</th>
                             <th class="px-3 py-2 text-right text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Unit Cost</th>
+                            <th class="px-3 py-2 text-right text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Landed/Unit</th>
                             <th class="px-3 py-2 text-right text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Line Total</th>
                             <th class="px-3 py-2 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Update Received</th>
                         </tr>
@@ -148,6 +155,7 @@
                                 @endif
                             </td>
                             <td class="px-3 py-2 text-sm text-right text-gray-700 dark:text-gray-300">${{ number_format($item->unit_cost, 2) }}</td>
+                            <td class="px-3 py-2 text-sm text-right font-medium text-indigo-600 dark:text-indigo-400">${{ number_format($item->landed_cost_per_unit, 2) }}</td>
                             <td class="px-3 py-2 text-sm text-right font-medium text-gray-800 dark:text-gray-200">${{ number_format($item->line_total, 2) }}</td>
                             <td class="px-3 py-2 text-center">
                                 @if($po->status !== 'cancelled' && $item->quantity_received < $item->quantity_ordered)
@@ -171,8 +179,8 @@
         <!-- PO Sales Performance -->
         <div class="grid grid-cols-1 lg:grid-cols-4 gap-4">
             <x-card>
-                <div class="text-xs font-medium text-gray-500 mb-1">PO Cost (Total)</div>
-                <div class="text-2xl font-bold text-gray-900 dark:text-gray-100">${{ number_format($poCost, 2) }}</div>
+                <div class="text-xs font-medium text-gray-500 mb-1">PO Cost (Landed)</div>
+                <div class="text-2xl font-bold text-gray-900 dark:text-gray-100">${{ number_format($po->total_landed_cost > 0 ? $po->total_landed_cost : $poCost, 2) }}</div>
             </x-card>
             <x-card>
                 <div class="text-xs font-medium text-gray-500 mb-1">Revenue from Sales</div>
@@ -303,6 +311,7 @@
                             <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Expense #</th>
                             <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Description</th>
                             <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Category</th>
+                            <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Service Vendor</th>
                             <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Date</th>
                             <th class="px-3 py-2 text-right text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Amount</th>
                             <th class="px-3 py-2 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Status</th>
@@ -316,6 +325,13 @@
                             <td class="px-3 py-2">
                                 @php $catLabels = \App\Models\Expense::categoryLabels(); @endphp
                                 <span class="px-2 py-0.5 text-xs rounded-md bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400">{{ $catLabels[$expense->category] ?? ucfirst($expense->category) }}</span>
+                            </td>
+                            <td class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300">
+                                @if($expense->serviceVendor)
+                                    <span class="text-xs">{{ $expense->serviceVendor->brand_name }}</span>
+                                @else
+                                    <span class="text-xs text-gray-400">—</span>
+                                @endif
                             </td>
                             <td class="px-3 py-2 text-sm text-gray-500">{{ $expense->expense_date->format('M d, Y') }}</td>
                             <td class="px-3 py-2 text-sm font-medium text-right text-red-600 dark:text-red-400">${{ number_format($expense->amount, 2) }}</td>

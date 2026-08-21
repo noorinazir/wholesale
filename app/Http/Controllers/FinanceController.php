@@ -193,7 +193,7 @@ class FinanceController extends Controller
 
     public function purchaseOrderShow($id)
     {
-        $po = PurchaseOrder::with(['vendor', 'items.product', 'expenses'])->findOrFail($id);
+        $po = PurchaseOrder::with(['vendor', 'items.product', 'expenses.serviceVendor'])->findOrFail($id);
 
         // Get all sales linked to this PO
         $linkedSales = AmazonOrder::where('purchase_order_id', $po->id)
@@ -531,6 +531,8 @@ class FinanceController extends Controller
                     }
                 }
             }
+
+            $po->recalculateWithExpenses();
         }
 
         $this->auditLog->log('updated', 'PurchaseOrder', "{$po->po_number} status → {$validated['status']}");
@@ -615,6 +617,8 @@ class FinanceController extends Controller
             $po->update(['status' => 'partial_received']);
         }
 
+        $po->recalculateWithExpenses();
+
         return back()->with('status', 'Received quantity updated. Product costs and stock adjusted.');
     }
 
@@ -645,6 +649,7 @@ class FinanceController extends Controller
         }
 
         $po->update(['status' => 'received', 'actual_delivery_date' => now()]);
+        $po->recalculateWithExpenses();
 
         $this->auditLog->log('updated', 'PurchaseOrder', "{$po->po_number} → received all items");
         return back()->with('status', 'All items marked as received. Product costs and stock updated.');
@@ -1275,7 +1280,7 @@ class FinanceController extends Controller
     // === Expenses ===
     public function expenseIndex(Request $request)
     {
-        $query = Expense::with(['vendor:id,brand_name', 'product:id,product_name', 'purchaseOrder:id,po_number']);
+        $query = Expense::with(['vendor:id,brand_name', 'serviceVendor:id,brand_name', 'product:id,product_name', 'purchaseOrder:id,po_number']);
 
         if ($search = $request->input('search')) {
             $query->where(function ($q) use ($search) {
@@ -1326,13 +1331,15 @@ class FinanceController extends Controller
     {
         $validated = $request->validate([
             'vendor_id' => 'nullable|exists:vendors,id',
+            'service_vendor_id' => 'nullable|exists:vendors,id',
             'product_id' => 'nullable|exists:products,id',
             'purchase_order_id' => 'nullable|exists:purchase_orders,id',
-            'category' => 'required|in:shipping,labeling,inventory,amazon_fees,fba_fees,amazon_referral,advertising,storage,returns,supplies,software,fees,other',
+            'category' => 'required|in:shipping,labeling,inventory,amazon_fees,fba_fees,amazon_referral,prep,inspection,customs,freight,insurance,advertising,storage,returns,supplies,software,fees,other',
             'description' => 'required|string',
             'amount' => 'required|numeric|min:0',
             'expense_date' => 'required|date',
             'status' => 'required|in:pending,approved,paid,rejected',
+            'allocation_method' => 'nullable|in:none,by_quantity,by_value,specific',
             'payment_method' => 'nullable|string',
             'vendor_name' => 'nullable|string',
             'receipt_url' => 'nullable|string',
@@ -1343,9 +1350,19 @@ class FinanceController extends Controller
 
         $validated['expense_number'] = Expense::generateExpenseNumber();
         $validated['is_recurring'] = $request->boolean('is_recurring');
+        $validated['allocation_method'] = $validated['allocation_method'] ?? 'by_quantity';
 
         $expense = Expense::create($validated);
         $this->auditLog->log('created', 'Expense', $expense->expense_number);
+
+        // Trigger PO recalculation if expense is linked to a PO and already approved/paid
+        if ($expense->purchase_order_id && in_array($expense->status, ['approved', 'paid'])) {
+            $po = PurchaseOrder::with('items')->find($expense->purchase_order_id);
+            if ($po) {
+                $po->recalculateWithExpenses();
+            }
+        }
+
         return back()->with('status', 'Expense recorded.');
     }
 
@@ -1356,8 +1373,22 @@ class FinanceController extends Controller
             'status' => 'required|in:pending,approved,paid,rejected',
         ]);
 
+        $oldStatus = $expense->status;
         $expense->update($validated);
         $this->auditLog->log('updated', 'Expense', "{$expense->expense_number} → {$validated['status']}");
+
+        // Trigger PO landed cost recalculation when status changes to/from approved/paid
+        if ($expense->purchase_order_id) {
+            $wasAllocated = in_array($oldStatus, ['approved', 'paid']);
+            $isAllocated = in_array($validated['status'], ['approved', 'paid']);
+            if ($wasAllocated !== $isAllocated) {
+                $po = PurchaseOrder::with('items')->find($expense->purchase_order_id);
+                if ($po) {
+                    $po->recalculateWithExpenses();
+                }
+            }
+        }
+
         return back()->with('status', 'Expense status updated.');
     }
 

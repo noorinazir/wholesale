@@ -102,11 +102,14 @@ class Product extends Model
 
     public function updateCostsFromPO(PurchaseOrderItem $item): void
     {
+        $landedPerUnit = $item->calculateLandedCost();
+
         $this->update([
             'buying_price' => (float)$item->unit_cost,
-            'shipping_cost' => (float)$item->unit_shipping,
+            'shipping_cost' => (float)$item->unit_shipping + (float)$item->allocated_po_shipping,
             'labeling_cost' => (float)$item->unit_labeling,
-            'other_costs' => (float)$item->unit_other_costs,
+            'other_costs' => (float)$item->unit_other_costs + (float)$item->allocated_po_tax,
+            'operation_cost' => (float)$item->allocated_expense_cost,
             'last_purchase_order_id' => $item->purchase_order_id,
         ]);
         $this->recalculate();
