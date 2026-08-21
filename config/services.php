@@ -36,7 +36,7 @@ return [
     ],
 
     'kimi' => [
-        'api_key' => env('KIMI_API_KEY'),
+        'api_key' => env('MOONSHOT_API_KEY', env('KIMI_API_KEY')),
         'model' => env('KIMI_MODEL', 'kimi-k3'),
         'temperature' => env('KIMI_TEMPERATURE', 0.7),
         'max_tokens' => env('KIMI_MAX_TOKENS', 800),

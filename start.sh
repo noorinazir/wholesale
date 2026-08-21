@@ -72,12 +72,21 @@ else
     sed -i "s|^APP_KEY=.*|APP_KEY=$APP_KEY|" .env
 fi
 
-# Set KIMI_API_KEY if provided
-if [ -n "$KIMI_API_KEY" ]; then
-    if grep -q "^KIMI_API_KEY=" .env; then
-        sed -i "s|^KIMI_API_KEY=.*|KIMI_API_KEY=$KIMI_API_KEY|" .env
+# Set MOONSHOT_API_KEY if provided (Render environment variable)
+if [ -n "$MOONSHOT_API_KEY" ]; then
+    if grep -q "^MOONSHOT_API_KEY=" .env; then
+        sed -i "s|^MOONSHOT_API_KEY=.*|MOONSHOT_API_KEY=$MOONSHOT_API_KEY|" .env
     else
-        echo "KIMI_API_KEY=$KIMI_API_KEY" >> .env
+        echo "MOONSHOT_API_KEY=$MOONSHOT_API_KEY" >> .env
+    fi
+fi
+
+# Also check legacy KIMI_API_KEY env var
+if [ -n "$KIMI_API_KEY" ]; then
+    if grep -q "^MOONSHOT_API_KEY=" .env; then
+        sed -i "s|^MOONSHOT_API_KEY=.*|MOONSHOT_API_KEY=$KIMI_API_KEY|" .env
+    else
+        echo "MOONSHOT_API_KEY=$KIMI_API_KEY" >> .env
     fi
 fi
 

@@ -10,9 +10,10 @@
     $totalCost = \App\Models\AiGeneration::sum('estimated_cost') ?? 0;
     $totalInputTokens = \App\Models\AiGeneration::sum('input_tokens') ?? 0;
     $totalOutputTokens = \App\Models\AiGeneration::sum('output_tokens') ?? 0;
-    $currentModel = \App\Models\SystemSetting::get('kimi_model', config('services.kimi.model', 'moonshot-v1-8k'));
+    $currentModel = \App\Models\SystemSetting::get('kimi_model', config('services.kimi.model', 'kimi-k3'));
     $currentTemperature = \App\Models\SystemSetting::get('kimi_temperature', config('services.kimi.temperature', 0.7));
     $currentMaxTokens = \App\Models\SystemSetting::get('kimi_max_tokens', config('services.kimi.max_tokens', 2048));
+    $envKeySet = !empty(config('services.kimi.api_key'));
     @endphp
 
     <div class="max-w-3xl mx-auto space-y-6">
@@ -31,8 +32,15 @@
                 @csrf
                 <div>
                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Kimi API Key</label>
+                    @if($envKeySet)
+                    <div class="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-md p-3 mb-2">
+                        <p class="text-sm text-green-700 dark:text-green-400">✓ API key is set via <code>MOONSHOT_API_KEY</code> environment variable on Render. This is the most secure method.</p>
+                    </div>
+                    <input type="password" name="kimi_api_key" class="block w-full rounded-md border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300" placeholder="Override env key (optional)">
+                    @else
                     <input type="password" name="kimi_api_key" class="block w-full rounded-md border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300" placeholder="{{ $isConfigured ? '•••••••• (configured)' : 'Enter API key' }}">
-                    <p class="text-xs text-gray-500 mt-1">Get your API key from <a href="https://platform.kimi.ai/console/api-keys" target="_blank" class="text-indigo-600 hover:underline">Kimi API Platform</a></p>
+                    @endif
+                    <p class="text-xs text-gray-500 mt-1">Get your API key from <a href="https://platform.kimi.ai/console/api-keys" target="_blank" class="text-indigo-600 hover:underline">Kimi API Platform</a>. For production, set <code>MOONSHOT_API_KEY</code> as an environment variable on Render.</p>
                 </div>
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
