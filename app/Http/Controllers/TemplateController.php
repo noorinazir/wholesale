@@ -23,7 +23,6 @@ class TemplateController extends Controller
             'subject_template' => 'required|string',
             'body_template' => 'required|string',
             'description' => 'nullable|string',
-            'is_active' => 'nullable|boolean',
         ]);
 
         $template = EmailTemplate::create(array_merge($validated, [
@@ -47,7 +46,6 @@ class TemplateController extends Controller
             'subject_template' => 'required|string',
             'body_template' => 'required|string',
             'description' => 'nullable|string',
-            'is_active' => 'nullable|boolean',
         ]);
 
         $validated['is_active'] = $request->has('is_active');
