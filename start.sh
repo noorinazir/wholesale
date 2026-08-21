@@ -97,9 +97,11 @@ php artisan migrate --force || echo "WARNING: Some migrations failed. Check logs
 php artisan db:seed --class=DatabaseSeeder --force
 
 # Clear any stale cache then re-cache for production
+php artisan view:clear 2>/dev/null || true
 php artisan optimize:clear 2>/dev/null || true
 php artisan config:cache
 php artisan route:cache
+php artisan view:cache
 
 # Start queue worker in background with persistent logs + PID for supervision
 mkdir -p storage/logs
