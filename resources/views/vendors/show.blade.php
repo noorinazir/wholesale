@@ -297,6 +297,7 @@
                             <th class="px-3 py-2 text-right font-medium text-gray-500 uppercase">Shipping</th>
                             <th class="px-3 py-2 text-right font-medium text-gray-500 uppercase">Label</th>
                             <th class="px-3 py-2 text-right font-medium text-gray-500 uppercase">Other</th>
+                            <th class="px-3 py-2 text-right font-medium text-gray-500 uppercase">Op Cost</th>
                             <th class="px-3 py-2 text-right font-medium text-gray-500 uppercase">Total Cost</th>
                             <th class="px-3 py-2 text-right font-medium text-gray-500 uppercase">Sell Price</th>
                             <th class="px-3 py-2 text-right font-medium text-gray-500 uppercase">Net Profit</th>
@@ -315,10 +316,11 @@
                                 <div class="text-gray-400">{{ $product->asin ?? '' }} · {{ $product->product_category ?? '' }}</div>
                             </td>
                             <td class="px-3 py-2 text-right text-gray-600 dark:text-gray-400">${{ number_format($product->buying_price, 2) }}</td>
-                            <td class="px-3 py-2 text-right text-gray-600 dark:text-gray-400">${{ number_format($product->fba_fee, 2) }}</td>
+                            <td class="px-3 py-2 text-right text-gray-600 dark:text-gray-400">${{ number_format($product->amazon_fee, 2) }}</td>
                             <td class="px-3 py-2 text-right text-gray-600 dark:text-gray-400">${{ number_format($product->shipping_cost, 2) }}</td>
                             <td class="px-3 py-2 text-right text-gray-600 dark:text-gray-400">${{ number_format($product->labeling_cost, 2) }}</td>
                             <td class="px-3 py-2 text-right text-gray-600 dark:text-gray-400">${{ number_format($product->other_costs, 2) }}</td>
+                            <td class="px-3 py-2 text-right text-gray-600 dark:text-gray-400">${{ number_format($product->operation_cost, 2) }}</td>
                             <td class="px-3 py-2 text-right font-medium text-gray-700 dark:text-gray-300">${{ number_format($product->total_cost, 2) }}</td>
                             <td class="px-3 py-2 text-right font-medium text-gray-700 dark:text-gray-300">${{ number_format($product->amazon_sell_price, 2) }}</td>
                             <td class="px-3 py-2 text-right font-bold {{ $product->is_profitable ? 'text-green-600' : 'text-red-600' }}">${{ number_format($product->net_profit, 2) }}</td>

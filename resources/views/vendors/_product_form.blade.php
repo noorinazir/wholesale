@@ -172,14 +172,15 @@
                 referralPercent: {{ $product?->referral_fee_percent ?? 15.00 }},
                 existingAsins: @json($existingAsins),
                 get totalCost() {
-                    return (this.buyingPrice || 0) + (this.fbaFee || 0) + (this.shippingCost || 0) +
+                    const referral = (this.sellPrice || 0) * (this.referralPercent || 0) / 100;
+                    return (this.buyingPrice || 0) + (this.fbaFee || 0) + referral + (this.shippingCost || 0) +
                            (this.labelingCost || 0) + (this.otherCosts || 0) + (this.operationCost || 0);
                 },
                 get referralFee() {
                     return (this.sellPrice || 0) * (this.referralPercent || 0) / 100;
                 },
                 get netProfit() {
-                    return (this.sellPrice || 0) - this.totalCost - this.referralFee;
+                    return (this.sellPrice || 0) - this.totalCost;
                 },
                 get marginPercent() {
                     return (this.sellPrice || 0) > 0 ? (this.netProfit / (this.sellPrice || 0)) * 100 : 0;
