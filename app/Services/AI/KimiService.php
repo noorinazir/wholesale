@@ -41,12 +41,25 @@ class KimiService
     {
         $startTime = microtime(true);
 
+        $model = $options['model'] ?? $this->model;
+        $temperature = $options['temperature'] ?? $this->temperature;
+
+        // kimi-k3 only supports temperature=1
+        if ($model === 'kimi-k3') {
+            $temperature = 1;
+        }
+
         $payload = array_merge([
-            'model' => $options['model'] ?? $this->model,
+            'model' => $model,
             'messages' => $messages,
-            'temperature' => $options['temperature'] ?? $this->temperature,
+            'temperature' => $temperature,
             'max_tokens' => $options['max_tokens'] ?? $this->maxTokens,
         ], $options);
+
+        // Ensure temperature is correct after array_merge (options could override)
+        if ($model === 'kimi-k3') {
+            $payload['temperature'] = 1;
+        }
 
         try {
             $response = Http::withHeaders([
