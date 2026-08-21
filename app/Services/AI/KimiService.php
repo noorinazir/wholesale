@@ -59,7 +59,18 @@ class KimiService
         // Ensure temperature is correct after array_merge (options could override)
         if ($model === 'kimi-k3') {
             $payload['temperature'] = 1;
+            // Set reasoning_effort to low by default to save tokens for simple tasks
+            if (!isset($payload['reasoning_effort'])) {
+                $payload['reasoning_effort'] = 'low';
+            }
         }
+
+        // Remove internal-only keys that shouldn't go to the API
+        unset($payload['model'], $payload['messages'], $payload['temperature'], $payload['max_tokens']);
+        $payload['model'] = $model;
+        $payload['messages'] = $messages;
+        $payload['temperature'] = $temperature;
+        $payload['max_tokens'] = $options['max_tokens'] ?? $this->maxTokens;
 
         try {
             $response = Http::withHeaders([
@@ -90,6 +101,14 @@ class KimiService
             $data = $response->json();
             $content = $data['choices'][0]['message']['content'] ?? null;
             $usage = $data['usage'] ?? null;
+
+            if (!$content) {
+                Log::warning('Kimi API returned empty content', [
+                    'model' => $payload['model'],
+                    'response_body' => mb_substr($response->body(), 0, 1000),
+                    'choices' => $data['choices'] ?? [],
+                ]);
+            }
 
             return [
                 'success' => true,

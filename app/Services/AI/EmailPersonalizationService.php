@@ -272,7 +272,9 @@ class EmailPersonalizationService
             ['role' => 'user', 'content' => $userPrompt],
         ];
 
-        $result = $this->kimiService->chat($messages, ['max_tokens' => 800, 'temperature' => 0.8]);
+        $options = ['max_tokens' => 4096, 'temperature' => 1];
+
+        $result = $this->kimiService->chat($messages, $options);
 
         try {
             $this->logGeneration(null, $user, $result, $messages, 'generate_template');
@@ -287,7 +289,7 @@ class EmailPersonalizationService
             ];
         }
 
-        $parsed = $this->parseResponse($result['content']);
+        $parsed = $this->parseResponse($result['content'], 'template');
 
         if (!$parsed['success']) {
             return [
@@ -497,6 +499,13 @@ class EmailPersonalizationService
         if ($expectedFormat === 'document_response') {
             if (empty($data['opening'])) {
                 return ['success' => false, 'error' => 'Missing opening in document response'];
+            }
+            return ['success' => true, 'data' => $data];
+        }
+
+        if ($expectedFormat === 'template') {
+            if (empty($data['subject_template']) || empty($data['body_template'])) {
+                return ['success' => false, 'error' => 'Missing subject_template or body_template in AI response'];
             }
             return ['success' => true, 'data' => $data];
         }
