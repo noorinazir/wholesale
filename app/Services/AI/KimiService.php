@@ -16,10 +16,18 @@ class KimiService
 
     public function __construct()
     {
-        $this->apiKey = (string) (SystemSetting::get('kimi_api_key', config('services.kimi.api_key', '')) ?? '');
-        $this->model = (string) (SystemSetting::get('kimi_model', config('services.kimi.model', 'moonshot-v1-8k')) ?? 'moonshot-v1-8k');
-        $this->temperature = (float) (SystemSetting::get('kimi_temperature', config('services.kimi.temperature', 0.7)) ?? 0.7);
-        $this->maxTokens = (int) (SystemSetting::get('kimi_max_tokens', config('services.kimi.max_tokens', 800)) ?? 800);
+        try {
+            $this->apiKey = (string) (SystemSetting::get('kimi_api_key', config('services.kimi.api_key', '')) ?? '');
+            $this->model = (string) (SystemSetting::get('kimi_model', config('services.kimi.model', 'moonshot-v1-8k')) ?? 'moonshot-v1-8k');
+            $this->temperature = (float) (SystemSetting::get('kimi_temperature', config('services.kimi.temperature', 0.7)) ?? 0.7);
+            $this->maxTokens = (int) (SystemSetting::get('kimi_max_tokens', config('services.kimi.max_tokens', 800)) ?? 800);
+        } catch (\Throwable $e) {
+            Log::warning('KimiService constructor failed to load settings: ' . $e->getMessage());
+            $this->apiKey = '';
+            $this->model = 'moonshot-v1-8k';
+            $this->temperature = 0.7;
+            $this->maxTokens = 800;
+        }
         $this->baseUrl = (string) config('services.kimi.base_url', 'https://api.moonshot.cn/v1');
     }
 

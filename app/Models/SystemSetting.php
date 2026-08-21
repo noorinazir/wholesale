@@ -36,7 +36,18 @@ class SystemSetting extends Model
             return $default;
         }
 
-        $value = $setting->is_encrypted ? Crypt::decrypt($setting->value) : $setting->value;
+        if ($setting->is_encrypted) {
+            try {
+                $value = Crypt::decrypt($setting->value);
+            } catch (\Illuminate\Contracts\Encryption\DecryptException $e) {
+                \Illuminate\Support\Facades\Log::warning('SystemSetting decryption failed for key "' . $key . '": ' . $e->getMessage());
+                Cache::put($cacheKey, $default, now()->addHour());
+                return $default;
+            }
+        } else {
+            $value = $setting->value;
+        }
+
         Cache::put($cacheKey, $value, now()->addHour());
 
         return $value;
