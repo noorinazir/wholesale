@@ -4,6 +4,7 @@ namespace App\Services\AI;
 
 use App\Models\AiGeneration;
 use App\Models\Company;
+use App\Models\EmailTemplate;
 use App\Models\GeneratedEmail;
 use App\Models\User;
 use App\Models\Vendor;
@@ -26,8 +27,13 @@ class EmailPersonalizationService
         string $objective = 'Wholesale Authorization',
         string $tone = 'professional',
         ?string $customInstructions = null,
-        ?int $campaignId = null
+        ?int $campaignId = null,
+        bool $useAI = false
     ): array {
+        if (!$useAI) {
+            return $this->generateFromTemplate($vendor, $company, $user, $objective, $tone, $customInstructions, $campaignId);
+        }
+
         $personalization = $this->getAIPersonalization($vendor, $company, $objective, $tone, $customInstructions, $user);
 
         $emailData = $this->templateEngine->buildEmail($vendor, $company, $objective, $tone, $personalization);
@@ -54,6 +60,55 @@ class EmailPersonalizationService
             'email' => $generatedEmail,
             'quality_checks' => $qualityChecks,
             'ai_generation_id' => $personalization['ai_generation_id'] ?? null,
+        ];
+    }
+
+    public function generateFromTemplate(
+        Vendor $vendor,
+        ?Company $company,
+        ?User $user = null,
+        string $objective = 'Wholesale Authorization',
+        string $tone = 'professional',
+        ?string $customInstructions = null,
+        ?int $campaignId = null
+    ): array {
+        $userTemplate = $this->templateEngine->findUserTemplate($objective);
+
+        if ($userTemplate) {
+            $emailData = $this->templateEngine->buildFromUserTemplate($userTemplate, $vendor, $company);
+        } else {
+            $personalization = [
+                'opening' => "I hope this email finds you well. I'm reaching out because we've been following {$vendor->brand_name} and are impressed with your product line.",
+                'value_prop' => '',
+                'category_question' => 'Do you have a wholesale or dealer program available?',
+                'notes' => 'Default template (no user template configured)',
+            ];
+            $emailData = $this->templateEngine->buildEmail($vendor, $company, $objective, $tone, $personalization);
+        }
+
+        $qualityChecks = $this->runQualityChecks($emailData, $vendor);
+
+        $generatedEmail = GeneratedEmail::create([
+            'vendor_id' => $vendor->id,
+            'campaign_id' => $campaignId,
+            'user_id' => $user?->id,
+            'email_template_id' => $emailData['template_id'] ?? null,
+            'subject' => $emailData['subject'],
+            'body' => $emailData['body'],
+            'personalization_notes' => $emailData['personalization_notes'],
+            'tone' => $tone,
+            'objective' => $objective,
+            'custom_instructions' => $customInstructions,
+            'ai_model' => null,
+            'status' => 'draft',
+            'quality_checks' => $qualityChecks,
+        ]);
+
+        return [
+            'success' => true,
+            'email' => $generatedEmail,
+            'quality_checks' => $qualityChecks,
+            'ai_generation_id' => null,
         ];
     }
 

@@ -66,7 +66,11 @@
                         <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Custom Instructions (optional)</label>
                         <textarea name="custom_instructions" rows="3" class="block w-full rounded-md border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm" placeholder="Any specific instructions for the AI..."></textarea>
                     </div>
-                    <button type="submit" name="action" value="generate" class="w-full px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700" @disabled(!$isConfigured)>Generate Personalized Email</button>
+                    <label class="flex items-center gap-2">
+                        <input type="checkbox" name="use_ai" class="rounded border-gray-300" @disabled(!$isConfigured)>
+                        <span class="text-sm text-gray-700 dark:text-gray-300">Use AI personalization {{ !$isConfigured ? '(not configured)' : '(uses AI credits)' }}</span>
+                    </label>
+                    <button type="submit" name="action" value="generate" class="w-full px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700">Generate Email</button>
                 </form>
 
                 @if($selectedVendor)

@@ -124,8 +124,7 @@
         @if($stats['selected'] > 0)
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
             <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4">Bulk Generate Emails</h3>
-            @if($kimiService->isConfigured())
-            <form method="POST" action="{{ route('campaigns.show', $campaign->id) }}/generate-emails" class="flex flex-wrap gap-3 items-end" onsubmit="return confirm('Generate emails for {{ $stats['selected'] }} vendors? This will use AI credits.')">
+            <form method="POST" action="{{ route('campaigns.show', $campaign->id) }}/generate-emails" class="flex flex-wrap gap-3 items-end" onsubmit="return confirm('Generate emails for {{ $stats['selected'] }} vendors?')">
                 @csrf
                 <div>
                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Objective</label>
@@ -146,11 +145,13 @@
                         <option value="formal">Formal</option>
                     </select>
                 </div>
+                <label class="flex items-center gap-2 pb-2">
+                    <input type="checkbox" name="use_ai" class="rounded border-gray-300" @disabled(!$kimiService->isConfigured())>
+                    <span class="text-sm text-gray-700 dark:text-gray-300">Use AI personalization {{ !$kimiService->isConfigured() ? '(not configured)' : '(uses AI credits)' }}</span>
+                </label>
                 <button type="submit" class="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700">Generate for {{ $stats['selected'] }} Vendors</button>
             </form>
-            @else
-            <p class="text-sm text-yellow-600">⚠ AI is not configured. <a href="{{ route('settings.ai') }}" class="underline">Configure AI settings</a> first.</p>
-            @endif
+            <p class="text-xs text-gray-500 mt-2">By default, emails are generated from templates with vendor details (name, brand, category) — no AI tokens used. Check "Use AI personalization" only if you want AI-generated opening lines.</p>
         </div>
         @endif
 

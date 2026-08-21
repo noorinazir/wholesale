@@ -2,6 +2,7 @@
 
 namespace App\Services\AI;
 
+use App\Models\EmailTemplate;
 use App\Models\Vendor;
 use App\Models\Company;
 
@@ -76,6 +77,82 @@ class TemplateEngine
             'subject' => $subject,
             'body' => $body,
             'personalization_notes' => $personalization['notes'] ?? '',
+        ];
+    }
+
+    public function buildFromUserTemplate(
+        EmailTemplate $template,
+        Vendor $vendor,
+        ?Company $company
+    ): array {
+        $vars = $this->buildVariables($vendor, $company);
+
+        $subject = strtr($template->subject_template, $vars);
+        $body = strtr($template->body_template, $vars);
+
+        $body = preg_replace('/\n{3,}/', "\n\n", $body);
+        $body = preg_replace('/^\s+\n/m', "", $body);
+
+        return [
+            'subject' => $subject,
+            'body' => $body,
+            'personalization_notes' => 'Template: ' . $template->name,
+            'template_id' => $template->id,
+        ];
+    }
+
+    public function findUserTemplate(string $objective): ?EmailTemplate
+    {
+        $typeMap = [
+            'Wholesale Authorization' => 'wholesale_inquiry',
+            'Reseller Authorization' => 'amazon_reseller',
+            'Amazon Authorization' => 'amazon_reseller',
+            'Distributor Pricing' => 'distributor_inquiry',
+            'Product Catalog Request' => 'catalog_request',
+            'Dealer Application' => 'dealer_application',
+            'Product Inquiry' => 'wholesale_inquiry',
+            'Brand Authorization' => 'amazon_reseller',
+            'Partnership Request' => 'wholesale_inquiry',
+            'MOQ and Pricing' => 'pricing_request',
+        ];
+
+        $type = $typeMap[$objective] ?? 'wholesale_inquiry';
+
+        return EmailTemplate::where('is_active', true)
+            ->where('type', $type)
+            ->orderByDesc('is_default')
+            ->first();
+    }
+
+    private function buildVariables(Vendor $vendor, ?Company $company): array
+    {
+        $contactName = $vendor->contact_name
+            ? explode(' ', $vendor->contact_name)[0]
+            : 'there';
+
+        $signature = "Best regards,\n";
+        if ($company?->contact_person) $signature .= "{$company->contact_person}\n";
+        if ($company?->company_name) $signature .= "{$company->company_name}\n";
+        if ($company?->website) $signature .= "{$company->website}\n";
+        if ($company?->contact_email) $signature .= "{$company->contact_email}\n";
+        if ($company?->phone) $signature .= "{$company->phone}\n";
+
+        return [
+            '{{contact_name}}' => $contactName,
+            '{{brand_name}}' => $vendor->brand_name ?? 'your brand',
+            '{{category}}' => $vendor->product_category ?? 'your products',
+            '{{company_name}}' => $company?->company_name ?? 'our company',
+            '{{website}}' => $company?->website ?? '',
+            '{{contact_person}}' => $company?->contact_person ?? '',
+            '{{contact_email}}' => $company?->contact_email ?? '',
+            '{{phone}}' => $company?->phone ?? '',
+            '{{tax_id}}' => $company?->resell_tax_id ?? '',
+            '{{ein}}' => $company?->ein ?? '',
+            '{{amazon_store}}' => $company?->amazon_store_url ?? '',
+            '{{signature}}' => trim($signature),
+            '{{vendor_company}}' => $vendor->company_name ?? '',
+            '{{vendor_website}}' => $vendor->website ?? '',
+            '{{vendor_country}}' => $vendor->country ?? '',
         ];
     }
 

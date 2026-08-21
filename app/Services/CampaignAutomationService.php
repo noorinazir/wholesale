@@ -42,7 +42,7 @@ class CampaignAutomationService
         $campaign->vendors()->detach($vendorId);
     }
 
-    public function bulkGenerateEmails(Campaign $campaign, string $objective, string $tone, User $user): array
+    public function bulkGenerateEmails(Campaign $campaign, string $objective, string $tone, User $user, bool $useAI = false): array
     {
         $company = Company::where('is_active', true)->first();
 
@@ -85,7 +85,8 @@ class CampaignAutomationService
                 $objective,
                 $tone,
                 null,
-                $campaign->id
+                $campaign->id,
+                $useAI
             );
 
             if (!$result['success']) {

@@ -73,20 +73,25 @@ class CampaignController extends Controller
         $request->validate([
             'objective' => 'required|string',
             'tone' => 'required|string',
+            'use_ai' => 'nullable|boolean',
         ]);
+
+        $useAI = $request->has('use_ai');
 
         $result = $this->campaignAutomationService->bulkGenerateEmails(
             $campaign,
             $request->objective,
             $request->tone,
-            auth()->user()
+            auth()->user(),
+            $useAI
         );
 
         if ($result['empty']) {
             return back()->with('error', 'No eligible vendors found for email generation.');
         }
 
-        $message = "Bulk generation complete: {$result['generated']} generated, {$result['auto_queued']} auto-queued, {$result['failed']} failed, {$result['skipped']} skipped.";
+        $method = $useAI ? 'AI-personalized' : 'template-based';
+        $message = "Bulk generation complete ({$method}): {$result['generated']} generated, {$result['auto_queued']} auto-queued, {$result['failed']} failed, {$result['skipped']} skipped.";
         $this->auditLog->log('generated', 'Campaign', $message);
 
         return back()->with('status', $message);

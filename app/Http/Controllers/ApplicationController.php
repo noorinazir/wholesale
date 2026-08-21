@@ -568,6 +568,7 @@ class ApplicationController extends Controller
                 'objective' => 'required|string',
                 'tone' => 'required|string',
                 'custom_instructions' => 'nullable|string',
+                'use_ai' => 'nullable|boolean',
             ]);
 
             $vendor = Vendor::findOrFail($request->vendor_id);
@@ -580,7 +581,9 @@ class ApplicationController extends Controller
                 auth()->user(),
                 $request->objective,
                 $request->tone,
-                $request->custom_instructions
+                $request->custom_instructions,
+                null,
+                $request->has('use_ai')
             );
 
             if ($result['success']) {
