@@ -109,7 +109,7 @@
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Body Template</label>
-                    <textarea name="body_template" rows="14" required class="block w-full rounded-md border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 font-mono text-sm" placeholder="Dear {{contact_name}},...">{{ $aiTemplate['body_template'] ?? old('body_template') }}</textarea>
+                    <textarea name="body_template" rows="14" required class="block w-full rounded-md border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 font-mono text-sm" placeholder="Dear &#123;&#123;contact_name&#125;&#125;,...">{{ $aiTemplate['body_template'] ?? old('body_template') }}</textarea>
                     @verbatim
                     <p class="text-xs text-gray-500 mt-1">Available variables: {{contact_name}}, {{brand_name}}, {{category}}, {{company_name}}, {{website}}, {{contact_person}}, {{contact_email}}, {{phone}}, {{tax_id}}, {{ein}}, {{amazon_store}}, {{signature}}, {{vendor_company}}, {{vendor_website}}, {{vendor_country}}</p>
                     @endverbatim
