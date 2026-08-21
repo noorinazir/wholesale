@@ -68,7 +68,7 @@ class PurchaseOrderItem extends Model
 
     public function getLandedCostPerUnitAttribute(): float
     {
-        if ((float)$this->attributes['landed_cost_per_unit'] ?? 0 > 0) {
+        if (array_key_exists('landed_cost_per_unit', $this->attributes) && (float)$this->attributes['landed_cost_per_unit'] > 0) {
             return (float)$this->attributes['landed_cost_per_unit'];
         }
         return $this->calculateLandedCost();

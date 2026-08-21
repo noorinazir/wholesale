@@ -65,10 +65,10 @@
                     <div class="flex justify-between"><span class="text-gray-500">Discount</span><span class="text-green-600">-${{ number_format($po->discount_amount, 2) }}</span></div>
                     @endif
                     <div class="border-t border-gray-100 dark:border-gray-700 pt-2 flex justify-between font-semibold"><span class="text-gray-700 dark:text-gray-300">Total</span><span class="text-gray-900 dark:text-gray-100">${{ number_format($po->total_amount, 2) }}</span></div>
-                    @if($po->total_expenses > 0)
+                    @if(isset($po->total_expenses) && $po->total_expenses > 0)
                     <div class="flex justify-between"><span class="text-gray-500">Allocated Expenses</span><span class="text-orange-600 dark:text-orange-400">${{ number_format($po->total_expenses, 2) }}</span></div>
                     @endif
-                    @if($po->total_landed_cost > 0)
+                    @if(isset($po->total_landed_cost) && $po->total_landed_cost > 0)
                     <div class="border-t border-gray-100 dark:border-gray-700 pt-2 flex justify-between font-semibold"><span class="text-gray-700 dark:text-gray-300">Landed Cost</span><span class="text-indigo-600 dark:text-indigo-400">${{ number_format($po->total_landed_cost, 2) }}</span></div>
                     @endif
                     <div class="flex justify-between"><span class="text-gray-500">Paid</span><span class="text-green-600">${{ number_format($po->amount_paid, 2) }}</span></div>
@@ -180,7 +180,7 @@
         <div class="grid grid-cols-1 lg:grid-cols-4 gap-4">
             <x-card>
                 <div class="text-xs font-medium text-gray-500 mb-1">PO Cost (Landed)</div>
-                <div class="text-2xl font-bold text-gray-900 dark:text-gray-100">${{ number_format($po->total_landed_cost > 0 ? $po->total_landed_cost : $poCost, 2) }}</div>
+                <div class="text-2xl font-bold text-gray-900 dark:text-gray-100">${{ number_format(isset($po->total_landed_cost) && $po->total_landed_cost > 0 ? $po->total_landed_cost : $poCost, 2) }}</div>
             </x-card>
             <x-card>
                 <div class="text-xs font-medium text-gray-500 mb-1">Revenue from Sales</div>

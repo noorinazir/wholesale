@@ -111,7 +111,7 @@ class PurchaseOrder extends Model
 
     public function getTotalLandedCostAttribute(): float
     {
-        if ((float)$this->attributes['total_landed_cost'] ?? 0 > 0) {
+        if (array_key_exists('total_landed_cost', $this->attributes) && (float)$this->attributes['total_landed_cost'] > 0) {
             return (float)$this->attributes['total_landed_cost'];
         }
         return $this->items->sum(fn($i) => $i->landed_cost_per_unit * $i->quantity_ordered);
