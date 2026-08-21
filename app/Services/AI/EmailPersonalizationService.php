@@ -256,7 +256,7 @@ class EmailPersonalizationService
 
         $availableVars = '{{contact_name}}, {{brand_name}}, {{category}}, {{company_name}}, {{website}}, {{contact_person}}, {{contact_email}}, {{phone}}, {{tax_id}}, {{ein}}, {{amazon_store}}, {{signature}}, {{vendor_company}}, {{vendor_website}}, {{vendor_country}}';
 
-        $systemPrompt = "You are a B2B email template generator. Create reusable email templates using {{variable}} placeholders. The templates will be used for wholesale/vendor outreach. Use ONLY the available variables listed. Do not invent new variables. Keep the subject line concise and professional. The body should be 3-5 paragraphs, well-structured, and use a {$tone} tone. Return JSON only.";
+        $systemPrompt = "You are a B2B email template generator. Create reusable email templates using variable placeholders like {{contact_name}}. The templates will be used for wholesale/vendor outreach. Use ONLY the available variables listed. Do not invent new variables. Keep the subject line concise and professional. The body should be 3-5 paragraphs, well-structured, and use a {$tone} tone. You MUST respond with ONLY raw JSON. No markdown, no code blocks, no explanation — just the JSON object.";
 
         $userPrompt = "Create a reusable email template for: {$typeLabel}\n";
         $userPrompt .= "Tone: {$tone}\n";
@@ -264,8 +264,9 @@ class EmailPersonalizationService
             $userPrompt .= "Additional instructions: {$customInstructions}\n";
         }
         $userPrompt .= "\nAvailable variables: {$availableVars}\n";
-        $userPrompt .= "\nReturn JSON: {\"name\": \"...\", \"subject_template\": \"...\", \"body_template\": \"...\", \"description\": \"...\"}\n";
-        $userPrompt .= "The subject_template and body_template MUST use {{variable}} placeholders (e.g. {{contact_name}}, {{brand_name}}). Do NOT use real names or values.";
+        $userPrompt .= "\nRespond with ONLY this JSON structure (no markdown, no backticks):\n";
+        $userPrompt .= '{"name": "Template Name", "subject_template": "Subject with {{variable}}", "body_template": "Email body with {{variable}} placeholders", "description": "Brief description"}' . "\n";
+        $userPrompt .= "\nThe subject_template and body_template MUST use {{variable}} placeholders (e.g. {{contact_name}}, {{brand_name}}). Do NOT use real names or values. Do NOT wrap the JSON in markdown code blocks.";
 
         $messages = [
             ['role' => 'system', 'content' => $systemPrompt],
@@ -292,6 +293,10 @@ class EmailPersonalizationService
         $parsed = $this->parseResponse($result['content'], 'template');
 
         if (!$parsed['success']) {
+            Log::warning('Template generation parse failed', [
+                'error' => $parsed['error'],
+                'raw_content' => mb_substr($result['content'] ?? '', 0, 1000),
+            ]);
             return [
                 'success' => false,
                 'error' => $parsed['error'],
@@ -521,18 +526,42 @@ class EmailPersonalizationService
     {
         $content = trim($content);
 
+        // 1. Try full content as JSON
         $decoded = json_decode($content, true);
         if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
             return $content;
         }
 
-        if (preg_match('/\{(?:[^{}]|(?:\{[^{}]*\}))*\}/s', $content, $matches)) {
-            return $matches[0];
+        // 2. Try extracting from markdown code blocks first (before regex)
+        if (preg_match('/```(?:json)?\s*(.*?)\s*```/s', $content, $matches)) {
+            $candidate = trim($matches[1]);
+            $decoded = json_decode($candidate, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                return $candidate;
+            }
         }
 
-        if (preg_match('/```json\s*(.*?)\s*```/s', $content, $matches)) {
-            return $matches[1];
+        // 3. Find the first { and last } — handles JSON with {{variable}} placeholders
+        //    that break naive brace-matching regexes
+        $firstBrace = strpos($content, '{');
+        $lastBrace = strrpos($content, '}');
+        if ($firstBrace !== false && $lastBrace !== false && $lastBrace > $firstBrace) {
+            $candidate = substr($content, $firstBrace, $lastBrace - $firstBrace + 1);
+            $decoded = json_decode($candidate, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                return $candidate;
+            }
+            // 4. Try cleaning up common issues: remove trailing commas before closing braces
+            $cleaned = preg_replace('/,\s*([}\]])/', '$1', $candidate);
+            $decoded = json_decode($cleaned, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                return $cleaned;
+            }
         }
+
+        Log::warning('extractJson failed to parse content', [
+            'content_preview' => mb_substr($content, 0, 500),
+        ]);
 
         return null;
     }

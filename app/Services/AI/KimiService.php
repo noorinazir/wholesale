@@ -49,28 +49,25 @@ class KimiService
             $temperature = 1;
         }
 
-        $payload = array_merge([
+        // Build clean payload with only valid API parameters
+        $payload = [
             'model' => $model,
             'messages' => $messages,
             'temperature' => $temperature,
             'max_tokens' => $options['max_tokens'] ?? $this->maxTokens,
-        ], $options);
+        ];
 
-        // Ensure temperature is correct after array_merge (options could override)
+        // kimi-k3: set reasoning_effort to low by default to save tokens
         if ($model === 'kimi-k3') {
-            $payload['temperature'] = 1;
-            // Set reasoning_effort to low by default to save tokens for simple tasks
-            if (!isset($payload['reasoning_effort'])) {
-                $payload['reasoning_effort'] = 'low';
-            }
+            $payload['reasoning_effort'] = $options['reasoning_effort'] ?? 'low';
         }
 
-        // Remove internal-only keys that shouldn't go to the API
-        unset($payload['model'], $payload['messages'], $payload['temperature'], $payload['max_tokens']);
-        $payload['model'] = $model;
-        $payload['messages'] = $messages;
-        $payload['temperature'] = $temperature;
-        $payload['max_tokens'] = $options['max_tokens'] ?? $this->maxTokens;
+        // Pass through any additional valid API params from options
+        foreach (['stream', 'tools', 'tool_choice', 'response_format'] as $key) {
+            if (isset($options[$key])) {
+                $payload[$key] = $options[$key];
+            }
+        }
 
         try {
             $response = Http::withHeaders([
