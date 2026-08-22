@@ -101,7 +101,7 @@ class AmazonFinancialImportService
                 $cols = str_getcsv($line, "\t");
                 if (!$header) {
                     $header = array_map(fn($h) => strtolower(trim($h)), $cols);
-                    $header = array_map(fn($h) => str_replace(['-', ' '], '_', $h), $header);
+                    $header = array_map(fn($h) => preg_replace('/[^a-z0-9]+/', '_', $h), $header);
                     continue;
                 }
                 if (count($cols) === count($header)) {
@@ -116,7 +116,7 @@ class AmazonFinancialImportService
             while (($row = fgetcsv($handle)) !== false) {
                 if (!$header) {
                     $header = array_map(fn($h) => strtolower(trim($h)), $row);
-                    $header = array_map(fn($h) => str_replace(['-', ' '], '_', $h), $header);
+                    $header = array_map(fn($h) => preg_replace('/[^a-z0-9]+/', '_', $h), $header);
                     continue;
                 }
                 if (count($row) === count($header)) {
@@ -165,6 +165,11 @@ class AmazonFinancialImportService
     {
         $parsed = [];
 
+        // Log the headers from the first row for debugging
+        if (!empty($rows) && !isset($rows[0]['raw'])) {
+            Log::info('Settlement file headers detected', ['headers' => array_keys($rows[0])]);
+        }
+
         foreach ($rows as $row) {
             // Strip any remaining quotes from values
             $row = array_map(fn($v) => is_string($v) ? trim($v, '"\'') : $v, $row);
@@ -176,11 +181,11 @@ class AmazonFinancialImportService
                 'sku' => $this->pickField($row, ['sku', 'seller_sku']),
                 'asin' => $this->pickField($row, ['asin']),
                 'product_name' => $this->pickField($row, ['product_name', 'product_details', 'title', 'description', 'sku_description', 'amount_description']),
-                'amount' => (float)($this->pickField($row, ['total_usd', 'total', 'amount', 'net_amount', 'transaction_amount', 'amount_transaction']) ?? 0),
-                'revenue' => (float)($this->pickField($row, ['total_product_charges', 'product_charges', 'item_price', 'sale_price']) ?? 0),
-                'amazon_fees' => (float)($this->pickField($row, ['amazon_fees', 'amazon_fee']) ?? 0),
-                'promotional_rebates' => (float)($this->pickField($row, ['total_promotional_rebates', 'promotional_rebates']) ?? 0),
-                'other_amount' => (float)($this->pickField($row, ['other']) ?? 0),
+                'amount' => (float)($this->pickField($row, ['total_usd', 'total', 'amount', 'net_amount', 'transaction_amount', 'amount_transaction', 'total_amount']) ?? 0),
+                'revenue' => (float)($this->pickField($row, ['total_product_charges', 'product_charges', 'item_price', 'sale_price', 'total_product_charges_usd']) ?? 0),
+                'amazon_fees' => (float)($this->pickField($row, ['amazon_fees', 'amazon_fee', 'amazon_fees_usd', 'total_amazon_fees']) ?? 0),
+                'promotional_rebates' => (float)($this->pickField($row, ['total_promotional_rebates', 'promotional_rebates', 'total_promotional_rebates_usd']) ?? 0),
+                'other_amount' => (float)($this->pickField($row, ['other', 'other_usd', 'total_other']) ?? 0),
                 'fee_type' => $this->guessFeeType($row),
                 'currency' => $this->pickField($row, ['currency', 'currency_code']) ?? 'USD',
                 'transaction_description' => $this->pickField($row, ['transaction_description', 'transaction_type', 'product_details', 'description', 'amount_description', 'amount_type', 'type']),
