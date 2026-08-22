@@ -200,6 +200,13 @@ class AmazonFinancialImportService
                 $txn['order_id'] = null;
             }
 
+            // Normalize --- as null for other fields Amazon uses --- for empty values
+            foreach (['posted_date', 'order_date', 'sku', 'asin', 'merchant_order_id'] as $field) {
+                if ($txn[$field] === '---' || $txn[$field] === '') {
+                    $txn[$field] = null;
+                }
+            }
+
             $parsed[] = $txn;
         }
 
@@ -700,89 +707,91 @@ PROMPT;
             ->whereNotIn('match_status', ['duplicate', 'ignored'])
             ->get();
 
-        DB::transaction(function () use ($transactions, &$stats, $import) {
-            foreach ($transactions as $txn) {
-                try {
-                    $amount = (float)$txn->amount;
+        foreach ($transactions as $txn) {
+            try {
+                $amount = (float)$txn->amount;
 
-                    if (in_array($txn->transaction_type, ['fee', 'service_fee', 'storage_fee', 'advertising'])) {
-                        // Amazon fees and service fees → create expense
+                if (in_array($txn->transaction_type, ['fee', 'service_fee', 'storage_fee', 'advertising'])) {
+                    // Amazon fees and service fees → create expense
+                    $expense = $this->createExpenseFromTransaction($txn, $import);
+                    if ($expense) {
+                        $newStatus = $txn->match_status;
+                        if ($txn->match_status === 'unmatched') {
+                            $newStatus = $txn->vendor_id
+                                ? 'matched_vendor'
+                                : ($txn->product_id ? 'matched_product' : 'unmatched');
+                        }
+                        $txn->update([
+                            'expense_id' => $expense->id,
+                            'match_status' => $newStatus,
+                        ]);
+                        $stats['expenses_created']++;
+                    }
+                } elseif ($txn->transaction_type === 'adjustment') {
+                    // Inventory reimbursements, liquidations, reversed reimbursements
+                    // Positive = income (reimbursement), negative = expense (liquidation loss)
+                    if ($amount > 0) {
+                        // Reimbursement — record as negative expense (income adjustment)
                         $expense = $this->createExpenseFromTransaction($txn, $import);
                         if ($expense) {
-                            $newStatus = $txn->match_status;
-                            if ($txn->match_status === 'unmatched') {
-                                $newStatus = $txn->vendor_id
-                                    ? 'matched_vendor'
-                                    : ($txn->product_id ? 'matched_product' : 'unmatched');
-                            }
                             $txn->update([
                                 'expense_id' => $expense->id,
-                                'match_status' => $newStatus,
+                                'match_status' => $txn->match_status === 'unmatched' ? 'unmatched' : $txn->match_status,
                             ]);
                             $stats['expenses_created']++;
                         }
-                    } elseif ($txn->transaction_type === 'adjustment') {
-                        // Inventory reimbursements, liquidations, reversed reimbursements
-                        // Positive = income (reimbursement), negative = expense (liquidation loss)
-                        if ($amount > 0) {
-                            // Reimbursement — record as negative expense (income adjustment)
-                            $expense = $this->createExpenseFromTransaction($txn, $import);
-                            if ($expense) {
-                                $txn->update([
-                                    'expense_id' => $expense->id,
-                                    'match_status' => $txn->match_status === 'unmatched' ? 'unmatched' : $txn->match_status,
-                                ]);
-                                $stats['expenses_created']++;
-                            }
-                        } elseif ($amount < 0) {
-                            // Liquidation or reversed reimbursement — record as expense
-                            $expense = $this->createExpenseFromTransaction($txn, $import);
-                            if ($expense) {
-                                $txn->update([
-                                    'expense_id' => $expense->id,
-                                    'match_status' => $txn->match_status === 'unmatched' ? 'unmatched' : $txn->match_status,
-                                ]);
-                                $stats['expenses_created']++;
-                            }
-                        }
-                    } elseif ($txn->transaction_type === 'transfer') {
-                        // Bank disbursements, seller repayments — mark as ignored (not P&L items)
-                        $txn->update(['match_status' => 'ignored']);
-                    } elseif (in_array($txn->transaction_type, ['order', 'refund'])) {
-                        // Matched orders — reconcile revenue and fees
-                        if ($txn->amazon_order_id) {
-                            $updated = $this->reconcileOrderFromTransaction($txn);
-                            if ($updated) {
-                                $stats['orders_updated']++;
-                            }
-                        } elseif ($txn->product_id && $txn->transaction_type === 'order') {
-                            // Order matched to product but no AmazonOrder record exists
-                            // Create expense for Amazon fees if present
-                            $amazonFees = abs((float)$txn->amazon_fees_amount);
-                            if ($amazonFees > 0) {
-                                $feeTxn = clone $txn;
-                                $feeTxn->amount = $amazonFees;
-                                $feeTxn->fee_type = 'referral';
-                                $expense = $this->createExpenseFromTransaction($feeTxn, $import);
-                                if ($expense) {
-                                    $txn->update(['expense_id' => $expense->id]);
-                                    $stats['expenses_created']++;
-                                }
-                            }
-                        }
-
-                        // Deduct inventory for matched orders, restore for refunds
-                        if ($txn->product_id) {
-                            $this->adjustInventoryFromTransaction($txn);
+                    } elseif ($amount < 0) {
+                        // Liquidation or reversed reimbursement — record as expense
+                        $expense = $this->createExpenseFromTransaction($txn, $import);
+                        if ($expense) {
+                            $txn->update([
+                                'expense_id' => $expense->id,
+                                'match_status' => $txn->match_status === 'unmatched' ? 'unmatched' : $txn->match_status,
+                            ]);
+                            $stats['expenses_created']++;
                         }
                     }
-                } catch (\Exception $e) {
-                    $stats['errors'][] = "Transaction #{$txn->id}: " . $e->getMessage();
-                }
-            }
+                } elseif ($txn->transaction_type === 'transfer') {
+                    // Bank disbursements, seller repayments — mark as ignored (not P&L items)
+                    $txn->update(['match_status' => 'ignored']);
+                } elseif (in_array($txn->transaction_type, ['order', 'refund'])) {
+                    // Matched orders — reconcile revenue and fees
+                    if ($txn->amazon_order_id) {
+                        $updated = $this->reconcileOrderFromTransaction($txn);
+                        if ($updated) {
+                            $stats['orders_updated']++;
+                        }
+                    } elseif ($txn->product_id && $txn->transaction_type === 'order') {
+                        // Order matched to product but no AmazonOrder record exists
+                        // Create expense for Amazon fees if present
+                        $amazonFees = abs((float)$txn->amazon_fees_amount);
+                        if ($amazonFees > 0) {
+                            $feeTxn = clone $txn;
+                            $feeTxn->amount = $amazonFees;
+                            $feeTxn->fee_type = 'referral';
+                            $expense = $this->createExpenseFromTransaction($feeTxn, $import);
+                            if ($expense) {
+                                $txn->update(['expense_id' => $expense->id]);
+                                $stats['expenses_created']++;
+                            }
+                        }
+                    }
 
-            $import->update(['status' => 'imported']);
-        });
+                    // Deduct inventory for matched orders, restore for refunds
+                    if ($txn->product_id) {
+                        $this->adjustInventoryFromTransaction($txn);
+                    }
+                }
+            } catch (\Exception $e) {
+                $stats['errors'][] = "Transaction #{$txn->id}: " . $e->getMessage();
+                Log::error('Settlement commit error for transaction', [
+                    'txn_id' => $txn->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        $import->update(['status' => 'imported']);
 
         $stats['duplicates_skipped'] = $import->transactions()->where('match_status', 'duplicate')->count();
         $stats['unmatched_skipped'] = $import->transactions()->where('match_status', 'unmatched')->count();
@@ -812,7 +821,11 @@ PROMPT;
 
         $category = $categoryMap[$txn->fee_type ?? 'other'] ?? 'other';
 
-        $existing = Expense::where('metadata->amazon_settlement_txn_id', $txn->id)->exists();
+        $existing = Expense::where('vendor_id', $txn->vendor_id)
+            ->where('amount', $amount)
+            ->where('category', $category)
+            ->where('description', 'LIKE', '%Import #' . $import->id . '%')
+            ->exists();
         if ($existing) {
             return null;
         }
