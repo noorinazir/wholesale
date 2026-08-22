@@ -312,7 +312,7 @@ PROMPT;
                     ->where('fee_type', $txn->fee_type)
                     ->where('amount', $txn->amount)
                     ->where('id', '!=', $txn->id)
-                    ->whereHas('import', fn($q) => $q->where('status', 'imported'))
+                    ->whereHas('import', fn($q) => $q->where('status', '!=', 'failed'))
                     ->exists();
 
                 if ($existing) {
@@ -326,6 +326,25 @@ PROMPT;
                 $match['vendor_id'] = $order->vendor_id;
                 $match['match_status'] = 'matched_order';
                 $match['match_notes'] = "Matched to AmazonOrder #{$order->id}";
+                return $match;
+            }
+        }
+
+        // Duplicate detection for fee-type transactions without order_id
+        if (!$txn->order_id && in_array($txn->transaction_type, ['fee', 'service_fee', 'storage_fee', 'advertising'])) {
+            $query = AmazonSettlementTransaction::where('transaction_type', $txn->transaction_type)
+                ->where('fee_type', $txn->fee_type)
+                ->where('amount', $txn->amount)
+                ->where('id', '!=', $txn->id)
+                ->whereHas('import', fn($q) => $q->where('status', '!=', 'failed'));
+
+            if ($txn->posted_date) {
+                $query->where('posted_date', $txn->posted_date);
+            }
+
+            if ($query->exists()) {
+                $match['match_status'] = 'duplicate';
+                $match['match_notes'] = 'Duplicate: same fee type, amount, and date already imported';
                 return $match;
             }
         }
@@ -491,8 +510,16 @@ PROMPT;
             $recordedRevenue = (float)$order->total_revenue;
             if (abs($recordedRevenue - $amount) > 0.01) {
                 $order->update(['total_revenue' => round($amount, 2)]);
-                $order->recalculate();
                 $updated = true;
+            }
+
+            // If referral fee was never calculated but rate is set, calculate it now
+            if ((float)$order->amazon_referral_fee <= 0 && (float)$order->breakaway_referral_rate > 0) {
+                $updated = true;
+            }
+
+            if ($updated) {
+                $order->recalculate();
             }
         }
 

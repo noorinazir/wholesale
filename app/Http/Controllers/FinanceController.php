@@ -816,6 +816,7 @@ class FinanceController extends Controller
 
         $imported = 0;
         $errors = [];
+        $seenOrderIds = [];
 
         foreach ($rows as $idx => $row) {
             if (empty($row['product_name']) && empty($row['product_id'])) {
@@ -823,6 +824,16 @@ class FinanceController extends Controller
             }
 
             try {
+                // Check for duplicate order_id within this batch
+                $amazonOrderId = $row['amazon_order_id'] ?? null;
+                if ($amazonOrderId) {
+                    if (in_array($amazonOrderId, $seenOrderIds)) {
+                        $errors[] = "Row " . ($idx + 1) . ": duplicate order ID {$amazonOrderId} within this batch";
+                        continue;
+                    }
+                    $seenOrderIds[] = $amazonOrderId;
+                }
+
                 $created = DB::transaction(function () use ($row, $idx, $batchId, &$errors) {
                     $product = null;
                     if (!empty($row['product_id'])) {
@@ -1617,6 +1628,14 @@ class FinanceController extends Controller
                 $product = Product::where('product_name', 'like', "%{$productName}%")->first();
             }
 
+            // Price mismatch warning: flag if imported price differs from product's recorded price
+            if ($product && $salePrice > 0) {
+                $productPrice = (float)$product->amazon_sell_price;
+                if ($productPrice > 0 && abs($salePrice - $productPrice) / $productPrice > 0.05) {
+                    $errors[] = 'Row ' . ($imported + $skipped + 1) . ": price mismatch for '{$productName}' — imported \${$salePrice} vs product \${$productPrice} ({$product->asin})";
+                }
+            }
+
             $totalRevenue = $salePrice * $quantity;
 
             $validStatuses = ['pending', 'processing', 'shipped', 'delivered', 'returned', 'refunded', 'cancelled'];
@@ -1660,8 +1679,8 @@ class FinanceController extends Controller
 
             $order->recalculate();
 
-            // Auto-deduct stock
-            if ($product) {
+            // Auto-deduct stock only for active order statuses
+            if ($product && !in_array($orderStatus, ['returned', 'refunded', 'cancelled'])) {
                 $product->adjustStock($quantity, 'subtract');
             }
 
@@ -1868,6 +1887,17 @@ class FinanceController extends Controller
         $request->validate([
             'file' => 'required|file|mimes:csv,txt,tsv,xml|max:10240',
         ]);
+
+        $fileName = $request->file('file')->getClientOriginalName();
+
+        $existing = AmazonSettlementImport::where('file_name', $fileName)
+            ->where('status', '!=', 'failed')
+            ->exists();
+
+        if ($existing) {
+            return back()->with('error', "A settlement file named '{$fileName}' has already been uploaded. Delete the previous import first if you need to re-upload.")
+                ->withInput();
+        }
 
         try {
             $import = $this->importService->parseFile(

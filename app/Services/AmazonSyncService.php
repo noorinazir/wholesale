@@ -128,7 +128,7 @@ class AmazonSyncService
             if ($estimate) {
                 $fbaFee = 0;
                 $referralFee = 0;
-                $referralRate = 15.0;
+                $referralRate = 0;
 
                 foreach ($estimate['FeeDetailList'] ?? [] as $fee) {
                     $feeType = $fee['FeeType'] ?? '';

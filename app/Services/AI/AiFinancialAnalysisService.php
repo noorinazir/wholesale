@@ -233,11 +233,11 @@ PROMPT;
                 ];
             }
 
-            if ($order->amazon_referral_fee <= 0 && $order->breakaway_referral_rate <= 0 && $revenue > 0) {
+            if ($order->breakaway_referral_rate > 0 && $order->amazon_referral_fee <= 0 && $revenue > 0) {
                 $anomalies[] = [
                     'type' => 'missing_referral_fee',
                     'order_id' => $order->amazon_order_id ?? $order->id,
-                    'description' => "No referral fee recorded for an order with revenue — profit may be overstated",
+                    'description' => "Referral rate of {$order->breakaway_referral_rate}% set but no referral fee calculated for order with \${$revenue} revenue",
                     'severity' => 'warning',
                 ];
             }

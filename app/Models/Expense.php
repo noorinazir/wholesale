@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\DB;
 
 class Expense extends Model
 {
@@ -60,9 +61,11 @@ class Expense extends Model
 
     public static function generateExpenseNumber(): string
     {
-        $last = self::latest()->first();
-        $next = $last ? $last->id + 1 : 1;
-        return 'EXP-' . date('Y') . '-' . str_pad($next, 5, '0', STR_PAD_LEFT);
+        return DB::transaction(function () {
+            $last = self::lockForUpdate()->latest()->first();
+            $next = $last ? $last->id + 1 : 1;
+            return 'EXP-' . date('Y') . '-' . str_pad($next, 5, '0', STR_PAD_LEFT);
+        });
     }
 
     public static function categoryLabels(): array
