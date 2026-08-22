@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\AmazonOrder;
+use App\Models\AmazonSettlementImport;
+use App\Models\AmazonSettlementTransaction;
 use App\Models\Expense;
 use App\Models\PurchaseOrder;
 use App\Models\PurchaseOrderItem;
@@ -13,6 +15,8 @@ use App\Services\ProfitLossService;
 use App\Services\AuditLogService;
 use App\Services\AmazonSpApiService;
 use App\Services\AmazonSyncService;
+use App\Services\AmazonFinancialImportService;
+use App\Services\AI\KimiService;
 use App\Models\SystemSetting;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -22,7 +26,8 @@ class FinanceController extends Controller
 {
     public function __construct(
         private AuditLogService $auditLog,
-        private ProfitLossService $plService
+        private ProfitLossService $plService,
+        private AmazonFinancialImportService $importService
     ) {}
 
     // === Finance Dashboard ===
@@ -111,6 +116,10 @@ class FinanceController extends Controller
         $lastSync = Product::whereNotNull('amazon_last_synced_at')
             ->latest('amazon_last_synced_at')->first()?->amazon_last_synced_at;
 
+        // Settlement import stats
+        $recentSettlements = AmazonSettlementImport::latest()->limit(5)->get();
+        $pendingSettlements = AmazonSettlementImport::where('status', 'parsed')->count();
+
         return view('finance.dashboard', [
             'monthSummary' => $monthSummary,
             'revenueTrend' => $revenueTrend,
@@ -139,6 +148,8 @@ class FinanceController extends Controller
             'expenseBreakdown' => $expenseBreakdown,
             'amazonConfigured' => $amazonConfigured,
             'lastSync' => $lastSync,
+            'recentSettlements' => $recentSettlements,
+            'pendingSettlements' => $pendingSettlements,
         ]);
     }
 
@@ -847,12 +858,12 @@ class FinanceController extends Controller
                     }
 
                     $poId = null;
-                    if ($product) {
-                        $po = PurchaseOrder::where('vendor_id', $product->vendor_id)
-                            ->whereIn('status', ['confirmed', 'partial_received', 'in_production', 'shipped'])
+                    if ($product?->id) {
+                        $poItem = PurchaseOrderItem::where('product_id', $product->id)
+                            ->whereHas('purchaseOrder', fn($q) => $q->whereIn('status', ['confirmed', 'partial_received', 'in_production', 'shipped', 'received']))
                             ->latest()
                             ->first();
-                        $poId = $po?->id;
+                        $poId = $poItem?->purchase_order_id;
                     }
 
                     $orderStatus = $row['order_status'] ?? 'delivered';
@@ -874,6 +885,7 @@ class FinanceController extends Controller
                         'product_cost' => $productCost,
                         'fba_fee' => $fbaFee,
                         'amazon_referral_fee' => 0,
+                        'breakaway_referral_rate' => $product ? (float)$product->referral_fee_percent : 0,
                         'shipping_cost' => $shippingCost,
                         'labeling_cost' => $labelingCost,
                         'other_costs' => $otherCosts,
@@ -1771,5 +1783,198 @@ class FinanceController extends Controller
         } catch (\Exception $e) {
             return back()->with('error', 'Sync failed: ' . $e->getMessage());
         }
+    }
+
+    // === Amazon Financial Statement Import ===
+
+    public function refreshPnlCache(Request $request)
+    {
+        $months = (int)($request->input('months', 12));
+        $this->plService->cacheMonthlySummaries($months);
+
+        $this->auditLog->log('updated', 'ProfitLossSummary', "Refreshed P&L cache for {$months} months");
+
+        return back()->with('status', "P&L cache refreshed for {$months} months.");
+    }
+
+    public function aiAnalysis(Request $request)
+    {
+        $startDate = $request->input('date_from') ? Carbon::parse($request->input('date_from')) : Carbon::now()->startOfMonth();
+        $endDate = $request->input('date_to') ? Carbon::parse($request->input('date_to')) : Carbon::now();
+
+        $aiService = app(\App\Services\AI\AiFinancialAnalysisService::class);
+
+        $anomalies = $aiService->detectAnomalies($startDate, $endDate);
+
+        $narrative = null;
+        $narrativeError = null;
+
+        if ($request->input('generate_narrative')) {
+            $result = $aiService->generateMonthlyNarrative($startDate, $endDate);
+            if ($result['success']) {
+                $narrative = $result['narrative'];
+            } else {
+                $narrativeError = $result['error'] ?? 'Failed to generate narrative';
+            }
+        }
+
+        return view('finance.ai-analysis', [
+            'anomalies' => $anomalies,
+            'narrative' => $narrative,
+            'narrativeError' => $narrativeError,
+            'startDate' => $startDate,
+            'endDate' => $endDate,
+        ]);
+    }
+
+    public function aiCategorizeExpense(Request $request)
+    {
+        $request->validate([
+            'description' => 'required|string',
+            'amount' => 'nullable|numeric',
+            'vendor_name' => 'nullable|string',
+        ]);
+
+        $aiService = app(\App\Services\AI\AiFinancialAnalysisService::class);
+
+        $result = $aiService->categorizeExpense(
+            $request->input('description'),
+            $request->input('amount') ? (float)$request->input('amount') : null,
+            $request->input('vendor_name')
+        );
+
+        return response()->json($result);
+    }
+
+    public function settlementIndex()
+    {
+        $imports = AmazonSettlementImport::withCount([
+            'transactions',
+            'transactions as matched_orders_count' => fn($q) => $q->where('match_status', 'matched_order'),
+            'transactions as duplicates_count' => fn($q) => $q->where('match_status', 'duplicate'),
+            'transactions as unmatched_count' => fn($q) => $q->where('match_status', 'unmatched'),
+        ])->latest()->paginate(20);
+
+        return view('finance.settlements-index', ['imports' => $imports]);
+    }
+
+    public function settlementUpload()
+    {
+        return view('finance.settlements-upload');
+    }
+
+    public function settlementStore(Request $request)
+    {
+        $request->validate([
+            'file' => 'required|file|mimes:csv,txt,tsv,xml|max:10240',
+        ]);
+
+        try {
+            $import = $this->importService->parseFile(
+                $request->file('file')->getRealPath(),
+                $request->file('file')->getClientOriginalName(),
+                $request->user()->id
+            );
+
+            $this->auditLog->log('created', 'AmazonSettlementImport', "Imported settlement file: {$import->file_name}");
+
+            return redirect()
+                ->route('finance.settlements.show', $import->id)
+                ->with('status', "File parsed successfully. {$import->transactions->count()} transactions found. Review and confirm to import.");
+
+        } catch (\Exception $e) {
+            return back()->with('error', 'Import failed: ' . $e->getMessage())->withInput();
+        }
+    }
+
+    public function settlementShow($id)
+    {
+        $import = AmazonSettlementImport::with(['transactions' => fn($q) => $q->latest()])->findOrFail($id);
+
+        $stats = [
+            'total' => $import->transactions->count(),
+            'matched_orders' => $import->transactions->where('match_status', 'matched_order')->count(),
+            'matched_products' => $import->transactions->where('match_status', 'matched_product')->count(),
+            'matched_vendors' => $import->transactions->where('match_status', 'matched_vendor')->count(),
+            'unmatched' => $import->transactions->where('match_status', 'unmatched')->count(),
+            'duplicates' => $import->transactions->where('match_status', 'duplicate')->count(),
+            'fees' => $import->transactions->whereIn('transaction_type', ['fee', 'service_fee', 'storage_fee', 'advertising'])->count(),
+            'orders' => $import->transactions->where('transaction_type', 'order')->count(),
+            'refunds' => $import->transactions->where('transaction_type', 'refund')->count(),
+            'total_fees' => $import->transactions->whereIn('transaction_type', ['fee', 'service_fee', 'storage_fee', 'advertising'])->sum(fn($t) => abs((float)$t->amount)),
+            'total_revenue' => $import->transactions->where('transaction_type', 'order')->sum(fn($t) => (float)$t->amount),
+            'total_refunds' => $import->transactions->where('transaction_type', 'refund')->sum(fn($t) => abs((float)$t->amount)),
+        ];
+
+        return view('finance.settlements-show', [
+            'import' => $import,
+            'stats' => $stats,
+        ]);
+    }
+
+    public function settlementCommit($id)
+    {
+        $import = AmazonSettlementImport::findOrFail($id);
+
+        if ($import->status === 'imported') {
+            return back()->with('error', 'This settlement has already been imported.');
+        }
+
+        $stats = $this->importService->commitImport($import);
+
+        $this->auditLog->log('updated', 'AmazonSettlementImport', "Settlement import #{$import->id} committed: {$stats['expenses_created']} expenses, {$stats['orders_updated']} orders updated");
+
+        $msg = "Import complete: {$stats['expenses_created']} expenses created, {$stats['orders_updated']} orders updated";
+        if ($stats['duplicates_skipped'] > 0) $msg .= ", {$stats['duplicates_skipped']} duplicates skipped";
+        if ($stats['unmatched_skipped'] > 0) $msg .= ", {$stats['unmatched_skipped']} unmatched skipped";
+        if (!empty($stats['errors'])) $msg .= ". Errors: " . implode('; ', array_slice($stats['errors'], 0, 3));
+
+        return redirect()->route('finance.settlements.index')->with('status', $msg);
+    }
+
+    public function settlementDestroy($id)
+    {
+        $import = AmazonSettlementImport::findOrFail($id);
+
+        if ($import->status === 'imported') {
+            Expense::where('metadata->amazon_settlement_import_id', $import->id)->delete();
+        }
+
+        $import->delete();
+        $this->auditLog->log('deleted', 'AmazonSettlementImport', "Deleted settlement import #{$id}");
+
+        return redirect()->route('finance.settlements.index')->with('status', 'Settlement import deleted.');
+    }
+
+    public function settlementReconciliation(Request $request)
+    {
+        $imports = AmazonSettlementImport::where('status', 'imported')
+            ->with(['transactions' => fn($q) => $q->whereIn('transaction_type', ['order', 'refund'])])
+            ->latest()->limit(10)->get();
+
+        $reconciliation = [];
+        foreach ($imports as $import) {
+            $settlementRevenue = $import->transactions->where('transaction_type', 'order')->sum(fn($t) => (float)$t->amount);
+            $settlementRefunds = $import->transactions->where('transaction_type', 'refund')->sum(fn($t) => abs((float)$t->amount));
+            $settlementFees = $import->transactions->whereIn('transaction_type', ['fee', 'service_fee', 'storage_fee', 'advertising'])->sum(fn($t) => abs((float)$t->amount));
+
+            $matchedOrderIds = $import->transactions->where('match_status', 'matched_order')->whereNotNull('amazon_order_id')->pluck('amazon_order_id');
+            $recordedRevenue = AmazonOrder::whereIn('id', $matchedOrderIds)->whereNotIn('order_status', ['cancelled', 'returned', 'refunded'])->sum('total_revenue');
+            $recordedFees = Expense::where('metadata->amazon_settlement_import_id', $import->id)->sum('amount');
+
+            $reconciliation[] = [
+                'import' => $import,
+                'settlement_revenue' => round($settlementRevenue, 2),
+                'settlement_refunds' => round($settlementRefunds, 2),
+                'settlement_fees' => round($settlementFees, 2),
+                'settlement_net' => round($settlementRevenue - $settlementRefunds - $settlementFees, 2),
+                'recorded_revenue' => round((float)$recordedRevenue, 2),
+                'recorded_fees' => round((float)$recordedFees, 2),
+                'revenue_diff' => round($settlementRevenue - (float)$recordedRevenue, 2),
+                'fees_diff' => round($settlementFees - (float)$recordedFees, 2),
+            ];
+        }
+
+        return view('finance.settlements-reconciliation', ['reconciliation' => $reconciliation]);
     }
 }

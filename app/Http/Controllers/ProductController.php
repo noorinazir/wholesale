@@ -152,27 +152,7 @@ class ProductController extends Controller
         $product = Product::findOrFail($id);
         $this->authorize('update', $product);
 
-        $validated = $request->validated();
-
-        $numericDefaults = [
-            'buying_price' => 0,
-            'fba_fee' => 0,
-            'shipping_cost' => 0,
-            'labeling_cost' => 0,
-            'other_costs' => 0,
-            'operation_cost' => 0,
-            'amazon_sell_price' => 0,
-            'referral_fee_percent' => 15.00,
-            'number_of_sellers' => 0,
-        ];
-
-        foreach ($numericDefaults as $field => $default) {
-            if (array_key_exists($field, $validated) && ($validated[$field] === '' || $validated[$field] === null)) {
-                $validated[$field] = $default;
-            }
-        }
-
-        $validated = array_filter($validated, fn($v) => $v !== null);
+        $validated = $this->applyNumericDefaults($request->validated());
 
         try {
             $product->update($validated);
@@ -320,6 +300,13 @@ class ProductController extends Controller
             }
         }
 
-        return array_filter($validated, fn($v) => $v !== null);
+        $textFields = ['asin', 'upc', 'image_url', 'notes', 'product_category', 'buy_box_type'];
+        foreach ($textFields as $field) {
+            if (array_key_exists($field, $validated) && $validated[$field] === null) {
+                $validated[$field] = '';
+            }
+        }
+
+        return $validated;
     }
 }

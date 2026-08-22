@@ -163,7 +163,21 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     // Finance Module - Reports (read: view-finance/manage-finance)
     Route::get('finance/profit-loss', [FinanceController::class, 'profitLossReport'])->name('finance.pnl')->middleware('can:view-finance');
+    Route::post('finance/refresh-pnl-cache', [FinanceController::class, 'refreshPnlCache'])->name('finance.pnl.refresh')->middleware('can:manage-finance');
     Route::get('finance/order-tracking', [FinanceController::class, 'orderTracking'])->name('finance.tracking')->middleware('can:view-finance');
+
+    // Finance Module - Amazon Settlement Import (read: view-finance/manage-finance, write: manage-finance)
+    Route::get('finance/settlements', [FinanceController::class, 'settlementIndex'])->name('finance.settlements.index')->middleware('can:view-finance');
+    Route::get('finance/settlements/upload', [FinanceController::class, 'settlementUpload'])->name('finance.settlements.upload')->middleware('can:manage-finance');
+    Route::post('finance/settlements', [FinanceController::class, 'settlementStore'])->name('finance.settlements.store')->middleware('can:manage-finance');
+    Route::get('finance/settlements/{id}', [FinanceController::class, 'settlementShow'])->name('finance.settlements.show')->middleware('can:view-finance');
+    Route::post('finance/settlements/{id}/commit', [FinanceController::class, 'settlementCommit'])->name('finance.settlements.commit')->middleware('can:manage-finance');
+    Route::delete('finance/settlements/{id}', [FinanceController::class, 'settlementDestroy'])->name('finance.settlements.destroy')->middleware('can:manage-finance');
+    Route::get('finance/reconciliation', [FinanceController::class, 'settlementReconciliation'])->name('finance.reconciliation')->middleware('can:view-finance');
+
+    // Finance Module - AI Analysis (read: view-finance/manage-finance)
+    Route::get('finance/ai-analysis', [FinanceController::class, 'aiAnalysis'])->name('finance.ai-analysis')->middleware('can:view-finance');
+    Route::post('finance/ai-categorize', [FinanceController::class, 'aiCategorizeExpense'])->name('finance.ai-categorize')->middleware('can:manage-finance');
 
     // Finance Module - Tax Rates (read: view-finance/manage-finance, write: manage-finance)
     Route::get('finance/tax-rates', [FinanceController::class, 'taxRates'])->name('finance.tax.index')->middleware('can:view-finance');

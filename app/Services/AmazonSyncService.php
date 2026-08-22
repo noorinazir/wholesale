@@ -210,13 +210,16 @@ class AmazonSyncService
                                 $taxData = AmazonOrder::calculateTax($totalRevenue, $taxState);
                             }
 
-                            // Auto-link to latest confirmed PO for this vendor
+                            // Auto-link to PO that contains this product, preferring confirmed/received POs
                             $poId = null;
-                            if ($product?->vendor_id) {
-                                $po = PurchaseOrder::where('vendor_id', $product->vendor_id)
-                                    ->whereIn('status', ['confirmed', 'partial'])
-                                    ->latest()->first();
-                                $poId = $po?->id;
+                            if ($product?->id) {
+                                $poItem = \App\Models\PurchaseOrderItem::where('product_id', $product->id)
+                                    ->whereHas('purchaseOrder', function ($q) {
+                                        $q->whereIn('status', ['confirmed', 'partial_received', 'in_production', 'shipped', 'received']);
+                                    })
+                                    ->latest()
+                                    ->first();
+                                $poId = $poItem?->purchase_order_id;
                             }
 
                             $order = AmazonOrder::create([

@@ -226,4 +226,64 @@ class ProfitLossService
             'returns_count' => $returnedOrders->count(),
         ];
     }
+
+    public function cacheSummaries(Carbon $startDate, Carbon $endDate, string $periodType = 'monthly'): void
+    {
+        $overall = $this->getOverallSummary($startDate, $endDate, $periodType);
+        $this->storeSummary('overall', null, $startDate, $endDate, $periodType, $overall);
+
+        $vendorBreakdown = $this->getPerVendorBreakdown($startDate, $endDate);
+        foreach ($vendorBreakdown as $row) {
+            $this->storeSummary('vendor', $row['vendor_id'], $startDate, $endDate, $periodType, $row);
+        }
+
+        $productBreakdown = $this->getPerProductBreakdown($startDate, $endDate);
+        foreach ($productBreakdown as $row) {
+            $this->storeSummary('product', $row['product_id'], $startDate, $endDate, $periodType, $row);
+        }
+    }
+
+    public function cacheMonthlySummaries(int $months = 12): void
+    {
+        $now = Carbon::now();
+        for ($i = $months - 1; $i >= 0; $i--) {
+            $start = $now->copy()->subMonths($i)->startOfMonth();
+            $end = $now->copy()->subMonths($i)->endOfMonth();
+            $this->cacheSummaries($start, $end, 'monthly');
+        }
+    }
+
+    private function storeSummary(string $scope, ?int $scopeId, Carbon $startDate, Carbon $endDate, string $periodType, array $data): void
+    {
+        ProfitLossSummary::updateOrCreate(
+            [
+                'scope' => $scope,
+                'scope_id' => $scopeId,
+                'period_start' => $startDate->toDateString(),
+                'period_end' => $endDate->toDateString(),
+                'period_type' => $periodType,
+            ],
+            [
+                'total_revenue' => $data['total_revenue'] ?? 0,
+                'total_product_cost' => $data['total_product_cost'] ?? 0,
+                'total_fba_fees' => $data['total_fba_fees'] ?? 0,
+                'total_referral_fees' => $data['total_referral_fees'] ?? 0,
+                'total_shipping' => $data['total_shipping'] ?? 0,
+                'total_labeling' => $data['total_labeling'] ?? 0,
+                'total_other_costs' => $data['total_other_costs'] ?? 0,
+                'total_operation_cost' => $data['total_operation_cost'] ?? 0,
+                'total_advertising' => $data['total_advertising'] ?? 0,
+                'total_returns_cost' => $data['total_returns_cost'] ?? 0,
+                'total_expenses' => $data['total_expenses'] ?? 0,
+                'gross_profit' => $data['gross_profit'] ?? 0,
+                'net_profit' => $data['net_profit'] ?? 0,
+                'margin_percent' => $data['margin_percent'] ?? 0,
+                'tax_collected' => $data['tax_collected'] ?? 0,
+                'tax_owed' => $data['tax_owed'] ?? 0,
+                'units_sold' => $data['units_sold'] ?? 0,
+                'units_returned' => $data['units_returned'] ?? 0,
+                'orders_count' => $data['orders_count'] ?? 0,
+            ]
+        );
+    }
 }

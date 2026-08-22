@@ -2,6 +2,7 @@
     $isEdit = !empty($product);
     $existingAsins = $isEdit ? [] : \App\Models\Product::whereNotNull('asin')->pluck('product_name', 'asin')->toArray();
     $initialValues = [
+        'asin' => $product?->asin ?? '',
         'buyingPrice' => (float)($product?->buying_price ?? 0),
         'fbaFee' => (float)($product?->fba_fee ?? 0),
         'shippingCost' => (float)($product?->shipping_cost ?? 0),

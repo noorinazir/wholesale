@@ -120,8 +120,17 @@
                 <x-sidebar-link :href="route('finance.expenses.index')" :active="request()->routeIs('finance.expenses.*')" icon="receipt">
                     Expenses
                 </x-sidebar-link>
+                <x-sidebar-link :href="route('finance.settlements.index')" :active="request()->routeIs('finance.settlements.*')" icon="upload">
+                    Amazon Settlements
+                </x-sidebar-link>
                 <x-sidebar-link :href="route('finance.pnl')" :active="request()->routeIs('finance.pnl')" icon="calculator">
                     Profit &amp; Loss
+                </x-sidebar-link>
+                <x-sidebar-link :href="route('finance.reconciliation')" :active="request()->routeIs('finance.reconciliation')" icon="check-circle">
+                    Reconciliation
+                </x-sidebar-link>
+                <x-sidebar-link :href="route('finance.ai-analysis')" :active="request()->routeIs('finance.ai-analysis')" icon="sparkles">
+                    AI Analysis
                 </x-sidebar-link>
                 <x-sidebar-link :href="route('finance.tax.index')" :active="request()->routeIs('finance.tax.*')" icon="currency">
                     Tax Rates

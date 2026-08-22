@@ -26,6 +26,19 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(\App\Services\AI\KimiService::class, function ($app) {
             return new \App\Services\AI\KimiService();
         });
+
+        $this->app->bind(\App\Services\AmazonFinancialImportService::class, function ($app) {
+            return new \App\Services\AmazonFinancialImportService(
+                $app->make(\App\Services\AI\KimiService::class)
+            );
+        });
+
+        $this->app->bind(\App\Services\AI\AiFinancialAnalysisService::class, function ($app) {
+            return new \App\Services\AI\AiFinancialAnalysisService(
+                $app->make(\App\Services\AI\KimiService::class),
+                $app->make(\App\Services\ProfitLossService::class)
+            );
+        });
     }
 
     public function boot(): void

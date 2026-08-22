@@ -229,4 +229,49 @@
             </div>
         </div>
     </div>
+
+    <!-- Product Calculator Script -->
+    <script>
+        function productCalculator(initial) {
+            initial = initial || {};
+            return {
+                showAdvanced: false,
+                asin: initial.asin || '',
+                asinWarning: '',
+                buyingPrice: initial.buyingPrice || 0,
+                fbaFee: initial.fbaFee || 0,
+                shippingCost: initial.shippingCost || 0,
+                labelingCost: initial.labelingCost || 0,
+                otherCosts: initial.otherCosts || 0,
+                operationCost: initial.operationCost || 0,
+                sellPrice: initial.sellPrice || 0,
+                referralPercent: initial.referralPercent || 15.00,
+                existingAsins: initial.existingAsins || {},
+                get totalCost() {
+                    const referral = (this.sellPrice || 0) * (this.referralPercent || 0) / 100;
+                    return (this.buyingPrice || 0) + (this.fbaFee || 0) + referral + (this.shippingCost || 0) +
+                           (this.labelingCost || 0) + (this.otherCosts || 0) + (this.operationCost || 0);
+                },
+                get referralFee() {
+                    return (this.sellPrice || 0) * (this.referralPercent || 0) / 100;
+                },
+                get netProfit() {
+                    return (this.sellPrice || 0) - this.totalCost;
+                },
+                get marginPercent() {
+                    return (this.sellPrice || 0) > 0 ? (this.netProfit / (this.sellPrice || 0)) * 100 : 0;
+                },
+                get roiPercent() {
+                    return (this.buyingPrice || 0) > 0 ? (this.netProfit / (this.buyingPrice || 0)) * 100 : 0;
+                },
+                checkAsin() {
+                    if (this.asin && this.existingAsins[this.asin]) {
+                        this.asinWarning = 'Warning: ASIN ' + this.asin + ' already exists as "' + this.existingAsins[this.asin] + '"';
+                    } else {
+                        this.asinWarning = '';
+                    }
+                }
+            };
+        }
+    </script>
 </x-app-layout>

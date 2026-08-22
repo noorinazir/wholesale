@@ -272,7 +272,7 @@
                 initial = initial || {};
                 return {
                     showAdvanced: false,
-                    asin: '',
+                    asin: initial.asin || '',
                     asinWarning: '',
                     buyingPrice: initial.buyingPrice || 0,
                     fbaFee: initial.fbaFee || 0,
