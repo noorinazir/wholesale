@@ -478,7 +478,7 @@ PROMPT;
         }
 
         // Strategy 2: Reverse LIKE (product name is substring of settlement name)
-        $product = Product::whereRaw('? LIKE CONCAT('%', product_name, '%')', [$settlementName])
+        $product = Product::whereRaw("? LIKE CONCAT('%', product_name, '%')", [$settlementName])
             ->whereRaw('LENGTH(product_name) > 5')
             ->orderByDesc('product_name')
             ->first();
