@@ -1895,8 +1895,18 @@ class FinanceController extends Controller
             ->exists();
 
         if ($existing) {
-            return back()->with('error', "A settlement file named '{$fileName}' has already been uploaded. Delete the previous import first if you need to re-upload.")
-                ->withInput();
+            // Check if the existing import is stuck in 'pending' status (likely timed out)
+            $stuckImport = AmazonSettlementImport::where('file_name', $fileName)
+                ->where('status', 'pending')
+                ->first();
+            if ($stuckImport) {
+                $stuckImport->update(['status' => 'failed', 'error_message' => 'Previous upload timed out']);
+            }
+
+            if (!$stuckImport) {
+                return back()->with('error', "A settlement file named '{$fileName}' has already been uploaded. Delete the previous import first if you need to re-upload.")
+                    ->withInput();
+            }
         }
 
         try {

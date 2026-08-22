@@ -308,23 +308,38 @@ PROMPT;
     {
         $transactions = $import->transactions()->where('match_status', 'unmatched')->get();
 
-        foreach ($transactions as $txn) {
-            $match = $this->matchSingle($txn);
-            $txn->update($match);
-        }
+        // Pre-load all active products once to avoid N+1 queries in name matching
+        $allProducts = Product::where('status', '!=', 'discontinued')
+            ->orWhereNull('status')
+            ->get(['id', 'product_name', 'vendor_id', 'asin', 'sku']);
+
+        // Pre-load existing order IDs for batch matching
+        $orderIds = $transactions->filter(fn($t) => $t->order_id)->pluck('order_id')->unique()->toArray();
+        $existingOrders = !empty($orderIds)
+            ? AmazonOrder::whereIn('amazon_order_id', $orderIds)->get()->keyBy('amazon_order_id')
+            : collect();
 
         $stats = [
             'total' => $transactions->count(),
-            'matched_order' => $transactions->filter(fn($t) => $t->fresh()->match_status === 'matched_order')->count(),
-            'matched_product' => $transactions->filter(fn($t) => $t->fresh()->match_status === 'matched_product')->count(),
-            'matched_vendor' => $transactions->filter(fn($t) => $t->fresh()->match_status === 'matched_vendor')->count(),
-            'unmatched' => $transactions->filter(fn($t) => $t->fresh()->match_status === 'unmatched')->count(),
-            'duplicate' => $transactions->filter(fn($t) => $t->fresh()->match_status === 'duplicate')->count(),
+            'matched_order' => 0,
+            'matched_product' => 0,
+            'matched_vendor' => 0,
+            'unmatched' => 0,
+            'duplicate' => 0,
         ];
+
+        foreach ($transactions as $txn) {
+            $match = $this->matchSingle($txn, $allProducts, $existingOrders);
+            $txn->update($match);
+
+            // Track stats from the match result directly (no extra DB calls)
+            $stats[$match['match_status']] = ($stats[$match['match_status']] ?? 0) + 1;
+        }
+
         Log::info('Settlement matching completed', ['import_id' => $import->id, 'stats' => $stats]);
     }
 
-    private function matchSingle(AmazonSettlementTransaction $txn): array
+    private function matchSingle(AmazonSettlementTransaction $txn, $allProducts = null, $existingOrders = null): array
     {
         $match = [
             'match_status' => 'unmatched',
@@ -351,8 +366,26 @@ PROMPT;
             // FBA Inventory Reimbursement, FBA Reversed Reimbursement, etc. are not product names
             if (str_contains(strtolower($productName), 'reimbursement') || 
                 str_contains(strtolower($productName), 'successful charge') ||
-                str_contains(strtolower($productName), 'disbursed')) {
+                str_contains(strtolower($productName), 'disbursed') ||
+                str_contains(strtolower($productName), 'liquidation')) {
                 $match['match_notes'] = 'Skipped: adjustment with non-product description';
+                return $match;
+            }
+        }
+
+        // Skip name matching for fee-type transactions without order_id when product_name is clearly a fee description
+        if (!$orderId && in_array($txn->transaction_type, ['fee', 'service_fee', 'storage_fee', 'advertising', 'other'])) {
+            $pn = strtolower(trim($txn->product_name ?? ''));
+            $feeKeywords = ['fee', 'subscription', 'storage', 'inbound', 'transportation', 'placement',
+                'carrier', 'fulfillment', 'commission', 'referral', 'advertising', 'sponsored',
+                'reimbursement', 'liquidation', 'charge', 'disbursement', 'transfer'];
+            $matchCount = 0;
+            foreach ($feeKeywords as $kw) {
+                if (str_contains($pn, $kw)) $matchCount++;
+            }
+            // If the product_name is mostly fee-related keywords, skip name matching
+            if ($matchCount >= 1 && strlen($pn) < 60) {
+                $match['match_notes'] = 'Skipped: fee-type description, not a product name';
                 return $match;
             }
         }
@@ -372,7 +405,9 @@ PROMPT;
 
         // 1. Try matching by order_id first (most precise)
         if ($orderId) {
-            $order = AmazonOrder::where('amazon_order_id', $orderId)->first();
+            $order = $existingOrders && $existingOrders->has($orderId)
+                ? $existingOrders->get($orderId)
+                : AmazonOrder::where('amazon_order_id', $orderId)->first();
             if ($order) {
                 $existing = AmazonSettlementTransaction::where('order_id', $orderId)
                     ->where('transaction_type', $txn->transaction_type)
@@ -416,10 +451,14 @@ PROMPT;
             }
         }
 
-        // 2. Try matching by ASIN
+        // 2. Try matching by ASIN (use pre-loaded collection if available)
         if ($asin) {
-            $product = Product::where('asin', $asin)->first()
-                ?? Product::where('asin', 'ilike', $asin)->first();
+            $product = $allProducts
+                ? $allProducts->firstWhere('asin', $asin)
+                : Product::where('asin', $asin)->first();
+            if (!$product && !$allProducts) {
+                $product = Product::where('asin', 'ilike', $asin)->first();
+            }
             if ($product) {
                 $match['product_id'] = $product->id;
                 $match['vendor_id'] = $product->vendor_id;
@@ -429,10 +468,14 @@ PROMPT;
             }
         }
 
-        // 3. Try matching by SKU
+        // 3. Try matching by SKU (use pre-loaded collection if available)
         if ($sku) {
-            $product = Product::where('sku', $sku)->first()
-                ?? Product::where('asin', $sku)->first();
+            $product = $allProducts
+                ? $allProducts->firstWhere('sku', $sku)
+                : Product::where('sku', $sku)->first();
+            if (!$product && !$allProducts) {
+                $product = Product::where('asin', $sku)->first();
+            }
             if ($product) {
                 $match['product_id'] = $product->id;
                 $match['vendor_id'] = $product->vendor_id;
@@ -444,7 +487,7 @@ PROMPT;
 
         // 4. PRIMARY: Fuzzy product name matching (main strategy for files without ASIN/SKU)
         if ($txn->product_name) {
-            $product = $this->matchByProductName($txn->product_name);
+            $product = $this->matchByProductName($txn->product_name, $allProducts);
             if ($product) {
                 $match['product_id'] = $product->id;
                 $match['vendor_id'] = $product->vendor_id;
@@ -461,7 +504,7 @@ PROMPT;
      * Multi-strategy fuzzy product name matching.
      * Handles truncated, partial, or extra-text product names from settlement files.
      */
-    private function matchByProductName(string $settlementName): ?Product
+    private function matchByProductName(string $settlementName, $allProducts = null): ?Product
     {
         $settlementName = trim($settlementName);
         // Strip trailing '...' that Amazon adds to truncated product names
@@ -486,15 +529,14 @@ PROMPT;
             return $product;
         }
 
-        // Strategy 3: Token-based matching — split both names into significant words,
-        // find products where most significant tokens match
+        // Strategy 3: Token-based matching using pre-loaded products (no DB query)
         $settlementTokens = $this->extractSignificantTokens($settlementName);
         if (count($settlementTokens) >= 2) {
-            $allProducts = Product::where('status', '!=', 'discontinued')->get(['id', 'product_name', 'vendor_id']);
+            $products = $allProducts ?? Product::where('status', '!=', 'discontinued')->get(['id', 'product_name', 'vendor_id']);
             $bestMatch = null;
             $bestScore = 0;
 
-            foreach ($allProducts as $candidate) {
+            foreach ($products as $candidate) {
                 $candidateTokens = $this->extractSignificantTokens($candidate->product_name);
                 if (count($candidateTokens) === 0) {
                     continue;
