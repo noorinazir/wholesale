@@ -98,9 +98,10 @@ class AmazonFinancialImportService
             foreach ($lines as $line) {
                 $line = trim($line);
                 if (empty($line)) continue;
-                $cols = explode("\t", $line);
+                $cols = str_getcsv($line, "\t");
                 if (!$header) {
                     $header = array_map(fn($h) => strtolower(trim($h)), $cols);
+                    $header = array_map(fn($h) => str_replace(['-', ' '], '_', $h), $header);
                     continue;
                 }
                 if (count($cols) === count($header)) {
@@ -115,6 +116,7 @@ class AmazonFinancialImportService
             while (($row = fgetcsv($handle)) !== false) {
                 if (!$header) {
                     $header = array_map(fn($h) => strtolower(trim($h)), $row);
+                    $header = array_map(fn($h) => str_replace(['-', ' '], '_', $h), $header);
                     continue;
                 }
                 if (count($row) === count($header)) {
@@ -164,21 +166,24 @@ class AmazonFinancialImportService
         $parsed = [];
 
         foreach ($rows as $row) {
+            // Strip any remaining quotes from values
+            $row = array_map(fn($v) => is_string($v) ? trim($v, '"\'') : $v, $row);
+
             $txn = [
                 'transaction_type' => $this->guessTransactionType($row),
-                'order_id' => $this->pickField($row, ['amazon_order_id', 'order_id', 'amazon-order-id']),
-                'merchant_order_id' => $this->pickField($row, ['merchant_order_id', 'merchant-order-id']),
+                'order_id' => $this->pickField($row, ['amazon_order_id', 'order_id', 'amazon_order_id']),
+                'merchant_order_id' => $this->pickField($row, ['merchant_order_id', 'merchant_order_id']),
                 'sku' => $this->pickField($row, ['sku', 'seller_sku']),
                 'asin' => $this->pickField($row, ['asin']),
-                'product_name' => $this->pickField($row, ['product_name', 'title', 'description', 'sku_description']),
-                'amount' => (float)($this->pickField($row, ['amount', 'total', 'net_amount', 'transaction_amount']) ?? 0),
+                'product_name' => $this->pickField($row, ['product_name', 'title', 'description', 'sku_description', 'amount_description']),
+                'amount' => (float)($this->pickField($row, ['amount', 'total', 'net_amount', 'transaction_amount', 'amount_transaction']) ?? 0),
                 'fee_type' => $this->guessFeeType($row),
                 'currency' => $this->pickField($row, ['currency', 'currency_code']) ?? 'USD',
-                'transaction_description' => $this->pickField($row, ['transaction_description', 'description', 'transaction_type', 'type']),
-                'posted_date' => $this->pickField($row, ['posted_date', 'date', 'transaction_date', 'posting_date']),
+                'transaction_description' => $this->pickField($row, ['transaction_description', 'description', 'transaction_type', 'type', 'amount_description', 'amount_type']),
+                'posted_date' => $this->pickField($row, ['posted_date', 'date', 'transaction_date', 'posting_date', 'date_time']),
                 'order_date' => $this->pickField($row, ['order_date', 'purchase_date']),
-                'fulfillment_channel' => $this->pickField($row, ['fulfillment_channel', 'channel']),
-                'settlement_id' => $this->pickField($row, ['settlement_id', 'settlement-id']),
+                'fulfillment_channel' => $this->pickField($row, ['fulfillment_channel', 'channel', 'fulfillment_id']),
+                'settlement_id' => $this->pickField($row, ['settlement_id', 'settlement_id']),
             ];
 
             $parsed[] = $txn;
@@ -263,21 +268,23 @@ PROMPT;
     private function storeTransactions(AmazonSettlementImport $import, array $parsed): void
     {
         foreach ($parsed as $txn) {
+            $cleanStr = fn($v) => is_string($v) ? trim($v, " \t\n\r\"'") : $v;
+
             AmazonSettlementTransaction::create([
                 'import_id' => $import->id,
                 'transaction_type' => $txn['transaction_type'] ?? 'other',
-                'order_id' => $txn['order_id'] ?? null,
-                'merchant_order_id' => $txn['merchant_order_id'] ?? null,
-                'sku' => $txn['sku'] ?? null,
-                'asin' => $txn['asin'] ?? null,
-                'product_name' => $txn['product_name'] ?? null,
+                'order_id' => $cleanStr($txn['order_id'] ?? null),
+                'merchant_order_id' => $cleanStr($txn['merchant_order_id'] ?? null),
+                'sku' => $cleanStr($txn['sku'] ?? null),
+                'asin' => $cleanStr($txn['asin'] ?? null),
+                'product_name' => $cleanStr($txn['product_name'] ?? null),
                 'amount' => (float)($txn['amount'] ?? 0),
-                'fee_type' => $txn['fee_type'] ?? null,
+                'fee_type' => $cleanStr($txn['fee_type'] ?? null),
                 'currency' => $txn['currency'] ?? 'USD',
-                'transaction_description' => $txn['transaction_description'] ?? null,
+                'transaction_description' => $cleanStr($txn['transaction_description'] ?? null),
                 'posted_date' => $txn['posted_date'] ?? null,
                 'order_date' => $txn['order_date'] ?? null,
-                'fulfillment_channel' => $txn['fulfillment_channel'] ?? null,
+                'fulfillment_channel' => $cleanStr($txn['fulfillment_channel'] ?? null),
                 'raw_data' => $txn,
                 'match_status' => 'unmatched',
             ]);
@@ -292,6 +299,16 @@ PROMPT;
             $match = $this->matchSingle($txn);
             $txn->update($match);
         }
+
+        $stats = [
+            'total' => $transactions->count(),
+            'matched_order' => $transactions->filter(fn($t) => $t->fresh()->match_status === 'matched_order')->count(),
+            'matched_product' => $transactions->filter(fn($t) => $t->fresh()->match_status === 'matched_product')->count(),
+            'matched_vendor' => $transactions->filter(fn($t) => $t->fresh()->match_status === 'matched_vendor')->count(),
+            'unmatched' => $transactions->filter(fn($t) => $t->fresh()->match_status === 'unmatched')->count(),
+            'duplicate' => $transactions->filter(fn($t) => $t->fresh()->match_status === 'duplicate')->count(),
+        ];
+        Log::info('Settlement matching completed', ['import_id' => $import->id, 'stats' => $stats]);
     }
 
     private function matchSingle(AmazonSettlementTransaction $txn): array
@@ -304,10 +321,14 @@ PROMPT;
             'match_notes' => null,
         ];
 
-        if ($txn->order_id) {
-            $order = AmazonOrder::where('amazon_order_id', $txn->order_id)->first();
+        $orderId = $txn->order_id ? trim($txn->order_id) : null;
+        $asin = $txn->asin ? trim($txn->asin) : null;
+        $sku = $txn->sku ? trim($txn->sku) : null;
+
+        if ($orderId) {
+            $order = AmazonOrder::where('amazon_order_id', $orderId)->first();
             if ($order) {
-                $existing = AmazonSettlementTransaction::where('order_id', $txn->order_id)
+                $existing = AmazonSettlementTransaction::where('order_id', $orderId)
                     ->where('transaction_type', $txn->transaction_type)
                     ->where('fee_type', $txn->fee_type)
                     ->where('amount', $txn->amount)
@@ -331,7 +352,7 @@ PROMPT;
         }
 
         // Duplicate detection for fee-type transactions without order_id
-        if (!$txn->order_id && in_array($txn->transaction_type, ['fee', 'service_fee', 'storage_fee', 'advertising'])) {
+        if (!$orderId && in_array($txn->transaction_type, ['fee', 'service_fee', 'storage_fee', 'advertising'])) {
             $query = AmazonSettlementTransaction::where('transaction_type', $txn->transaction_type)
                 ->where('fee_type', $txn->fee_type)
                 ->where('amount', $txn->amount)
@@ -349,8 +370,9 @@ PROMPT;
             }
         }
 
-        if ($txn->asin) {
-            $product = Product::where('asin', $txn->asin)->first();
+        if ($asin) {
+            $product = Product::where('asin', $asin)->first()
+                ?? Product::where('asin', 'ilike', $asin)->first();
             if ($product) {
                 $match['product_id'] = $product->id;
                 $match['vendor_id'] = $product->vendor_id;
@@ -360,9 +382,9 @@ PROMPT;
             }
         }
 
-        if ($txn->sku) {
-            $product = Product::where('sku', $txn->sku)->first()
-                ?? Product::where('asin', $txn->sku)->first();
+        if ($sku) {
+            $product = Product::where('sku', $sku)->first()
+                ?? Product::where('asin', $sku)->first();
             if ($product) {
                 $match['product_id'] = $product->id;
                 $match['vendor_id'] = $product->vendor_id;
@@ -373,7 +395,8 @@ PROMPT;
         }
 
         if ($txn->product_name) {
-            $product = Product::where('product_name', 'like', "%{$txn->product_name}%")->first();
+            $productName = trim($txn->product_name);
+            $product = Product::where('product_name', 'like', "%{$productName}%")->first();
             if ($product) {
                 $match['product_id'] = $product->id;
                 $match['vendor_id'] = $product->vendor_id;
@@ -538,14 +561,42 @@ PROMPT;
 
     private function guessTransactionType(array $row): string
     {
+        // First, check if there's an explicit transaction_type or amount_type column
+        $explicitType = $this->pickField($row, ['transaction_type', 'amount_type', 'type']);
+        if ($explicitType) {
+            $typeLower = strtolower(trim($explicitType));
+            $typeMap = [
+                'order' => 'order',
+                'refund' => 'refund',
+                'service fee' => 'service_fee',
+                'service_fee' => 'service_fee',
+                'fba inventory fee' => 'fee',
+                'cost of advertising' => 'advertising',
+                'advertising' => 'advertising',
+                'sponsored' => 'advertising',
+                'storage fee' => 'storage_fee',
+                'commission' => 'fee',
+                'referral' => 'fee',
+                'adjustment' => 'adjustment',
+                'transfer' => 'transfer',
+                'payout' => 'transfer',
+            ];
+            foreach ($typeMap as $needle => $result) {
+                if (str_contains($typeLower, $needle)) {
+                    return $result;
+                }
+            }
+        }
+
+        // Fallback: scan all values for keywords
         $desc = strtolower(implode(' ', array_values($row)));
 
         if (str_contains($desc, 'refund')) return 'refund';
+        if (str_contains($desc, 'order')) return 'order';
         if (str_contains($desc, 'advertising') || str_contains($desc, 'sponsored') || str_contains($desc, 'ppc')) return 'advertising';
         if (str_contains($desc, 'storage')) return 'storage_fee';
         if (str_contains($desc, 'fba') || str_contains($desc, 'fulfillment')) return 'fee';
         if (str_contains($desc, 'commission') || str_contains($desc, 'referral')) return 'fee';
-        if (str_contains($desc, 'order')) return 'order';
         if (str_contains($desc, 'transfer') || str_contains($desc, 'payout')) return 'transfer';
         if (str_contains($desc, 'adjustment')) return 'adjustment';
         if (str_contains($desc, 'service')) return 'service_fee';
@@ -555,6 +606,15 @@ PROMPT;
 
     private function guessFeeType(array $row): ?string
     {
+        $typeDesc = $this->pickField($row, ['transaction_type', 'amount_type', 'amount_description', 'description', 'type']);
+        if ($typeDesc) {
+            $descLower = strtolower($typeDesc);
+            if (str_contains($descLower, 'fba') || str_contains($descLower, 'fulfillment')) return 'fba';
+            if (str_contains($descLower, 'commission') || str_contains($descLower, 'referral')) return 'referral';
+            if (str_contains($descLower, 'storage')) return 'storage';
+            if (str_contains($descLower, 'advertising') || str_contains($descLower, 'sponsored') || str_contains($descLower, 'ppc')) return 'advertising';
+        }
+
         $desc = strtolower(implode(' ', array_values($row)));
 
         if (str_contains($desc, 'fba') || str_contains($desc, 'fulfillment')) return 'fba';
