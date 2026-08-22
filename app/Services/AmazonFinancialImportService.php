@@ -171,19 +171,22 @@ class AmazonFinancialImportService
 
             $txn = [
                 'transaction_type' => $this->guessTransactionType($row),
-                'order_id' => $this->pickField($row, ['amazon_order_id', 'order_id', 'amazon_order_id']),
-                'merchant_order_id' => $this->pickField($row, ['merchant_order_id', 'merchant_order_id']),
+                'order_id' => $this->pickField($row, ['amazon_order_id', 'order_id']),
+                'merchant_order_id' => $this->pickField($row, ['merchant_order_id']),
                 'sku' => $this->pickField($row, ['sku', 'seller_sku']),
                 'asin' => $this->pickField($row, ['asin']),
-                'product_name' => $this->pickField($row, ['product_name', 'title', 'description', 'sku_description', 'amount_description']),
-                'amount' => (float)($this->pickField($row, ['amount', 'total', 'net_amount', 'transaction_amount', 'amount_transaction']) ?? 0),
+                'product_name' => $this->pickField($row, ['product_name', 'product_details', 'title', 'description', 'sku_description', 'amount_description']),
+                'amount' => (float)($this->pickField($row, ['total_usd', 'total', 'amount', 'net_amount', 'transaction_amount', 'amount_transaction']) ?? 0),
+                'revenue' => (float)($this->pickField($row, ['total_product_charges', 'product_charges', 'item_price', 'sale_price']) ?? 0),
+                'amazon_fees' => (float)($this->pickField($row, ['amazon_fees', 'amazon_fee']) ?? 0),
+                'promotional_rebates' => (float)($this->pickField($row, ['total_promotional_rebates', 'promotional_rebates']) ?? 0),
                 'fee_type' => $this->guessFeeType($row),
                 'currency' => $this->pickField($row, ['currency', 'currency_code']) ?? 'USD',
-                'transaction_description' => $this->pickField($row, ['transaction_description', 'description', 'transaction_type', 'type', 'amount_description', 'amount_type']),
+                'transaction_description' => $this->pickField($row, ['transaction_description', 'transaction_type', 'product_details', 'description', 'amount_description', 'amount_type', 'type']),
                 'posted_date' => $this->pickField($row, ['posted_date', 'date', 'transaction_date', 'posting_date', 'date_time']),
                 'order_date' => $this->pickField($row, ['order_date', 'purchase_date']),
                 'fulfillment_channel' => $this->pickField($row, ['fulfillment_channel', 'channel', 'fulfillment_id']),
-                'settlement_id' => $this->pickField($row, ['settlement_id', 'settlement_id']),
+                'settlement_id' => $this->pickField($row, ['settlement_id']),
             ];
 
             $parsed[] = $txn;
@@ -325,6 +328,19 @@ PROMPT;
         $asin = $txn->asin ? trim($txn->asin) : null;
         $sku = $txn->sku ? trim($txn->sku) : null;
 
+        // If no ASIN, try to extract from product_name/product_details
+        if (!$asin && $txn->product_name) {
+            if (preg_match('/(?:ASIN[:\s]+)([A-Z0-9]{10})/i', $txn->product_name, $m)) {
+                $asin = trim($m[1]);
+            }
+        }
+        // If no SKU, try to extract from product_name/product_details
+        if (!$sku && $txn->product_name) {
+            if (preg_match('/(?:SKU[:\s]+)([A-Za-z0-9\-_]+)/i', $txn->product_name, $m)) {
+                $sku = trim($m[1]);
+            }
+        }
+
         if ($orderId) {
             $order = AmazonOrder::where('amazon_order_id', $orderId)->first();
             if ($order) {
@@ -396,7 +412,17 @@ PROMPT;
 
         if ($txn->product_name) {
             $productName = trim($txn->product_name);
+            // Try: settlement product name is part of a product name in DB
             $product = Product::where('product_name', 'like', "%{$productName}%")->first();
+            if (!$product) {
+                // Try reverse: product name in DB is part of settlement product name
+                $product = Product::whereRaw('? LIKE CONCAT('%', product_name, '%')', [$productName])->first();
+            }
+            if (!$product && strlen($productName) > 10) {
+                // Try matching on first 20 chars of product name
+                $prefix = substr($productName, 0, 20);
+                $product = Product::where('product_name', 'like', "{$prefix}%")->first();
+            }
             if ($product) {
                 $match['product_id'] = $product->id;
                 $match['vendor_id'] = $product->vendor_id;
