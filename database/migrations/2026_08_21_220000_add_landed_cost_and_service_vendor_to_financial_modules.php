@@ -9,39 +9,20 @@ return new class extends Migration
 {
     public function up(): void
     {
-        $isSqlite = DB::getDriverName() === 'sqlite';
-
         // 1. Add service_vendor_id and allocation_method to expenses
-        // SQLite can't add FK to existing table without full rebuild (breaks enum defaults)
-        Schema::table('expenses', function (Blueprint $table) use ($isSqlite) {
-            if ($isSqlite) {
-                $table->unsignedBigInteger('service_vendor_id')->nullable()->after('vendor_id');
-            } else {
-                $table->foreignId('service_vendor_id')->nullable()->constrained('vendors')->nullOnDelete()->after('vendor_id');
-            }
+        Schema::table('expenses', function (Blueprint $table) {
+            $table->foreignId('service_vendor_id')->nullable()->constrained('vendors')->nullOnDelete()->after('vendor_id');
             $table->string('allocation_method', 20)->default('by_quantity')->after('status');
             $table->index('service_vendor_id');
         });
 
-        // Add FK for SQLite separately (won't trigger table rebuild)
-        if ($isSqlite) {
-            try {
-                DB::statement('CREATE INDEX expenses_service_vendor_id_index ON expenses(service_vendor_id)');
-            } catch (\Exception $e) {
-                // Index may already exist
-            }
-        }
-
-        // Expand category enum with new FBA-relevant categories
-        // SQLite doesn't support MODIFY COLUMN, but doesn't enforce enum either
-        // MySQL needs the ALTER TABLE to expand the enum
-        if (!$isSqlite) {
-            DB::statement("ALTER TABLE expenses MODIFY COLUMN category ENUM(
-                'shipping','labeling','inventory','amazon_fees','fba_fees','amazon_referral',
-                'prep','inspection','customs','freight','insurance',
-                'advertising','storage','returns','supplies','software','fees','other'
-            ) DEFAULT 'other'");
-        }
+        // Expand category check constraint with new FBA-relevant categories
+        DB::statement("ALTER TABLE expenses DROP CONSTRAINT IF EXISTS expenses_category_check");
+        DB::statement("ALTER TABLE expenses ADD CONSTRAINT expenses_category_check CHECK (category IN (
+            'shipping','labeling','inventory','amazon_fees','fba_fees','amazon_referral',
+            'prep','inspection','customs','freight','insurance',
+            'advertising','storage','returns','supplies','software','fees','other'
+        ))");
 
         // 2. Add landed cost fields to purchase_order_items
         Schema::table('purchase_order_items', function (Blueprint $table) {
@@ -87,12 +68,11 @@ return new class extends Migration
             ]);
         });
 
-        if (DB::getDriverName() !== 'sqlite') {
-            DB::statement("ALTER TABLE expenses MODIFY COLUMN category ENUM(
-                'shipping','labeling','inventory','amazon_fees','fba_fees','amazon_referral',
-                'advertising','storage','returns','supplies','software','fees','other'
-            ) DEFAULT 'other'");
-        }
+        DB::statement("ALTER TABLE expenses DROP CONSTRAINT IF EXISTS expenses_category_check");
+        DB::statement("ALTER TABLE expenses ADD CONSTRAINT expenses_category_check CHECK (category IN (
+            'shipping','labeling','inventory','amazon_fees','fba_fees','amazon_referral',
+            'advertising','storage','returns','supplies','software','fees','other'
+        ))");
 
         Schema::table('expenses', function (Blueprint $table) {
             $table->dropIndex(['service_vendor_id']);
