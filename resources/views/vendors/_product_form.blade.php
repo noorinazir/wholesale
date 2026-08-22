@@ -1,9 +1,20 @@
 @php
     $isEdit = !empty($product);
     $existingAsins = $isEdit ? [] : \App\Models\Product::whereNotNull('asin')->pluck('product_name', 'asin')->toArray();
+    $initialValues = [
+        'buyingPrice' => (float)($product?->buying_price ?? 0),
+        'fbaFee' => (float)($product?->fba_fee ?? 0),
+        'shippingCost' => (float)($product?->shipping_cost ?? 0),
+        'labelingCost' => (float)($product?->labeling_cost ?? 0),
+        'otherCosts' => (float)($product?->other_costs ?? 0),
+        'operationCost' => (float)($product?->operation_cost ?? 0),
+        'sellPrice' => (float)($product?->amazon_sell_price ?? 0),
+        'referralPercent' => (float)($product?->referral_fee_percent ?? 15.00),
+        'existingAsins' => $existingAsins,
+    ];
 @endphp
 
-<div x-data="productCalculator()">
+<div x-data="productCalculator(@json($initialValues))">
     {{-- Essential Fields --}}
     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div>
@@ -155,48 +166,4 @@
         </div>
     </div>
 
-    @if(!isset($hideScript) || !$hideScript)
-    <script>
-        function productCalculator() {
-            return {
-                showAdvanced: false,
-                asin: '',
-                asinWarning: '',
-                buyingPrice: {{ $product?->buying_price ?? 0 }},
-                fbaFee: {{ $product?->fba_fee ?? 0 }},
-                shippingCost: {{ $product?->shipping_cost ?? 0 }},
-                labelingCost: {{ $product?->labeling_cost ?? 0 }},
-                otherCosts: {{ $product?->other_costs ?? 0 }},
-                operationCost: {{ $product?->operation_cost ?? 0 }},
-                sellPrice: {{ $product?->amazon_sell_price ?? 0 }},
-                referralPercent: {{ $product?->referral_fee_percent ?? 15.00 }},
-                existingAsins: @json($existingAsins),
-                get totalCost() {
-                    const referral = (this.sellPrice || 0) * (this.referralPercent || 0) / 100;
-                    return (this.buyingPrice || 0) + (this.fbaFee || 0) + referral + (this.shippingCost || 0) +
-                           (this.labelingCost || 0) + (this.otherCosts || 0) + (this.operationCost || 0);
-                },
-                get referralFee() {
-                    return (this.sellPrice || 0) * (this.referralPercent || 0) / 100;
-                },
-                get netProfit() {
-                    return (this.sellPrice || 0) - this.totalCost;
-                },
-                get marginPercent() {
-                    return (this.sellPrice || 0) > 0 ? (this.netProfit / (this.sellPrice || 0)) * 100 : 0;
-                },
-                get roiPercent() {
-                    return (this.buyingPrice || 0) > 0 ? (this.netProfit / (this.buyingPrice || 0)) * 100 : 0;
-                },
-                checkAsin() {
-                    if (this.asin && this.existingAsins[this.asin]) {
-                        this.asinWarning = 'Warning: ASIN ' + this.asin + ' already exists as "' + this.existingAsins[this.asin] + '"';
-                    } else {
-                        this.asinWarning = '';
-                    }
-                }
-            }
-        }
-    </script>
-    @endif
 </div>
