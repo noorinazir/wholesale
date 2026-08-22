@@ -2,10 +2,13 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
+    public $withinTransaction = false;
+
     public function up(): void
     {
         Schema::create('amazon_settlement_imports', function (Blueprint $table) {
@@ -15,7 +18,7 @@ return new class extends Migration
             $table->date('settlement_start_date')->nullable();
             $table->date('settlement_end_date')->nullable();
             $table->decimal('total_amount', 14, 2)->default(0);
-            $table->enum('status', ['pending', 'parsed', 'imported', 'failed'])->default('pending');
+            $table->string('status', 20)->default('pending');
             $table->text('raw_content')->nullable();
             $table->json('parse_summary')->nullable();
             $table->text('error_message')->nullable();
@@ -25,6 +28,8 @@ return new class extends Migration
             $table->index('settlement_id');
             $table->index('status');
         });
+
+        DB::statement("ALTER TABLE amazon_settlement_imports ADD CONSTRAINT amazon_settlement_imports_status_check CHECK (status IN ('pending', 'parsed', 'imported', 'failed'))");
 
         Schema::create('amazon_settlement_transactions', function (Blueprint $table) {
             $table->id();
@@ -43,7 +48,7 @@ return new class extends Migration
             $table->date('order_date')->nullable();
             $table->string('fulfillment_channel')->nullable();
 
-            $table->enum('match_status', ['unmatched', 'matched_order', 'matched_product', 'matched_vendor', 'duplicate', 'ignored'])->default('unmatched');
+            $table->string('match_status', 20)->default('unmatched');
             $table->foreignId('amazon_order_id')->nullable()->constrained()->nullOnDelete();
             $table->foreignId('product_id')->nullable()->constrained()->nullOnDelete();
             $table->foreignId('vendor_id')->nullable()->constrained()->nullOnDelete();
@@ -60,6 +65,8 @@ return new class extends Migration
             $table->index('match_status');
             $table->index('posted_date');
         });
+
+        DB::statement("ALTER TABLE amazon_settlement_transactions ADD CONSTRAINT amazon_settlement_transactions_match_status_check CHECK (match_status IN ('unmatched', 'matched_order', 'matched_product', 'matched_vendor', 'duplicate', 'ignored'))");
     }
 
     public function down(): void

@@ -7,8 +7,13 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
+    public $withinTransaction = false;
+
     public function up(): void
     {
+        // Drop old category check constraint first (before adding FK, to avoid transaction conflicts)
+        DB::statement("ALTER TABLE expenses DROP CONSTRAINT IF EXISTS expenses_category_check");
+
         // 1. Add service_vendor_id and allocation_method to expenses
         Schema::table('expenses', function (Blueprint $table) {
             $table->foreignId('service_vendor_id')->nullable()->constrained('vendors')->nullOnDelete()->after('vendor_id');
@@ -16,8 +21,7 @@ return new class extends Migration
             $table->index('service_vendor_id');
         });
 
-        // Expand category check constraint with new FBA-relevant categories
-        DB::statement("ALTER TABLE expenses DROP CONSTRAINT IF EXISTS expenses_category_check");
+        // Add new expanded category check constraint
         DB::statement("ALTER TABLE expenses ADD CONSTRAINT expenses_category_check CHECK (category IN (
             'shipping','labeling','inventory','amazon_fees','fba_fees','amazon_referral',
             'prep','inspection','customs','freight','insurance',
