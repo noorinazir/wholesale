@@ -14,7 +14,7 @@
     ];
 @endphp
 
-<div x-data="productCalculator(@json($initialValues))">
+<div x-data='productCalculator(@json($initialValues))'>
     {{-- Essential Fields --}}
     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div>
