@@ -1355,7 +1355,13 @@ class FinanceController extends Controller
 
         $validated['expense_number'] = Expense::generateExpenseNumber();
         $validated['is_recurring'] = $request->boolean('is_recurring');
-        $validated['allocation_method'] = $validated['allocation_method'] ?? 'by_quantity';
+
+        // Allocation method only applies when a PO is linked
+        if (empty($validated['purchase_order_id'])) {
+            $validated['allocation_method'] = 'none';
+        } else {
+            $validated['allocation_method'] = $validated['allocation_method'] ?? 'by_quantity';
+        }
 
         $expense = Expense::create($validated);
         $this->auditLog->log('created', 'Expense', $expense->expense_number);

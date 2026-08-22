@@ -160,7 +160,7 @@
     </div>
 
     <!-- Add Expense Modal -->
-    <div x-data="{ show: false }" @open-expense-modal.window="show = true" @keydown.escape.window="show = false" x-cloak>
+    <div x-data="{ show: false, linkedPO: '' }" @open-expense-modal.window="show = true" @keydown.escape.window="show = false" x-cloak>
         <div x-show="show" x-transition.opacity class="fixed inset-0 z-50 bg-black/50" @click="show = false"></div>
         <div x-show="show" x-transition class="fixed inset-0 z-50 flex items-center justify-center p-4" @click.self="show = false">
             <div class="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
@@ -230,7 +230,7 @@
                         </div>
                         <div>
                             <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Linked Purchase Order</label>
-                            <select name="purchase_order_id" class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                            <select name="purchase_order_id" x-model="linkedPO" class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
                                 <option value="">— None —</option>
                                 @foreach($purchaseOrders ?? [] as $po)
                                 <option value="{{ $po->id }}">{{ $po->po_number }} — {{ $po->vendor?->brand_name ?? 'Unknown' }} (${{ number_format($po->total_amount, 0) }})</option>
@@ -238,23 +238,22 @@
                             </select>
                             <p class="text-xs text-gray-400 mt-1">Select the PO this expense belongs to for landed cost calculation.</p>
                         </div>
-                        <div class="grid grid-cols-2 gap-3">
-                            <div>
-                                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Allocation Method</label>
-                                <select name="allocation_method" class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
-                                    @foreach(\App\Models\Expense::allocationMethodLabels() as $val => $label)
-                                    <option value="{{ $val }}" @selected($val === 'by_quantity')>{{ $label }}</option>
-                                    @endforeach
-                                </select>
-                            </div>
-                            <div>
-                                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Status</label>
-                                <select name="status" class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
-                                    <option value="pending">Pending</option>
-                                    <option value="approved">Approved</option>
-                                    <option value="paid">Paid</option>
-                                </select>
-                            </div>
+                        <div x-show="linkedPO !== ''" x-transition x-cloak>
+                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Allocation Method</label>
+                            <select name="allocation_method" class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                                @foreach(\App\Models\Expense::allocationMethodLabels() as $val => $label)
+                                <option value="{{ $val }}" @selected($val === 'by_quantity')>{{ $label }}</option>
+                                @endforeach
+                            </select>
+                            <p class="text-xs text-gray-400 mt-1">How to distribute this expense across PO line items.</p>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Status</label>
+                            <select name="status" class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                                <option value="pending">Pending</option>
+                                <option value="approved">Approved</option>
+                                <option value="paid">Paid</option>
+                            </select>
                         </div>
                     </div>
 
