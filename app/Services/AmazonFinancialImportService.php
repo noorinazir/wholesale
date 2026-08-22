@@ -470,8 +470,8 @@ PROMPT;
 
                 $score = $this->calculateTokenScore($settlementTokens, $candidateTokens);
 
-                // Require at least 50% token overlap for a match
-                if ($score > $bestScore && $score >= 0.5) {
+                // Require at least 35% token overlap for a match
+                if ($score > $bestScore && $score >= 0.35) {
                     $bestScore = $score;
                     $bestMatch = $candidate;
                 }
