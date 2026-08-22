@@ -1319,6 +1319,11 @@ class FinanceController extends Controller
         return view('finance.expenses', [
             'expenses' => $expenses,
             'vendors' => Vendor::orderBy('brand_name')->get(['id', 'brand_name']),
+            'purchaseOrders' => PurchaseOrder::with('vendor:id,brand_name')
+                ->whereNotIn('status', ['cancelled', 'draft'])
+                ->orderByDesc('id')
+                ->limit(100)
+                ->get(['id', 'po_number', 'vendor_id', 'status', 'total_amount']),
             'totalExpenses' => $totalExpenses,
             'pendingExpenses' => $pendingExpenses,
             'categoryTotals' => $categoryTotals,

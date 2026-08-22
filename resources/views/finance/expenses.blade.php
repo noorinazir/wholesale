@@ -164,91 +164,120 @@
         <div x-show="show" x-transition.opacity class="fixed inset-0 z-50 bg-black/50" @click="show = false"></div>
         <div x-show="show" x-transition class="fixed inset-0 z-50 flex items-center justify-center p-4" @click.self="show = false">
             <div class="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-                <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-800 z-10">
-                    <h3 class="text-sm font-semibold text-gray-800 dark:text-gray-200">Add Expense</h3>
+                <div class="flex items-center justify-between px-5 py-3.5 border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-800 z-10">
+                    <h3 class="text-base font-semibold text-gray-800 dark:text-gray-200">New Expense</h3>
                     <button @click="show = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                     </button>
                 </div>
-                <form method="POST" action="{{ route('finance.expenses.store') }}" class="p-4 space-y-3">
+                <form method="POST" action="{{ route('finance.expenses.store') }}" class="p-5 space-y-4">
                     @csrf
-                    <div class="grid grid-cols-2 gap-3">
+
+                    {{-- Section: Basics --}}
+                    <div class="space-y-3">
                         <div>
-                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Category *</label>
-                            <select name="category" required class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm">
-                                @foreach($categoryLabels as $val => $label)
-                                <option value="{{ $val }}">{{ $label }}</option>
+                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Description *</label>
+                            <input type="text" name="description" required placeholder="e.g. Freight charges for PO-0042" class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                        </div>
+                        <div class="grid grid-cols-3 gap-3">
+                            <div>
+                                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Category *</label>
+                                <select name="category" required class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                                    @foreach($categoryLabels as $val => $label)
+                                    <option value="{{ $val }}">{{ $label }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Amount *</label>
+                                <div class="relative">
+                                    <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                                    <input type="number" name="amount" required step="0.01" min="0" placeholder="0.00" class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm pl-6 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Date *</label>
+                                <input type="date" name="expense_date" required value="{{ date('Y-m-d') }}" class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                            </div>
+                        </div>
+                    </div>
+
+                    {{-- Divider --}}
+                    <div class="border-t border-gray-100 dark:border-gray-700"></div>
+
+                    {{-- Section: Vendor & PO Link --}}
+                    <div class="space-y-3">
+                        <h4 class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide">Vendor & Purchase Order</h4>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Service Vendor</label>
+                                <select name="service_vendor_id" class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                                    <option value="">— None —</option>
+                                    @foreach($vendors ?? [] as $vendor)
+                                    <option value="{{ $vendor->id }}">{{ $vendor->brand_name }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Product Vendor</label>
+                                <select name="vendor_id" class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                                    <option value="">— None —</option>
+                                    @foreach($vendors ?? [] as $vendor)
+                                    <option value="{{ $vendor->id }}">{{ $vendor->brand_name }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Linked Purchase Order</label>
+                            <select name="purchase_order_id" class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                                <option value="">— None —</option>
+                                @foreach($purchaseOrders ?? [] as $po)
+                                <option value="{{ $po->id }}">{{ $po->po_number }} — {{ $po->vendor?->brand_name ?? 'Unknown' }} (${{ number_format($po->total_amount, 0) }})</option>
                                 @endforeach
                             </select>
+                            <p class="text-xs text-gray-400 mt-1">Select the PO this expense belongs to for landed cost calculation.</p>
                         </div>
-                        <div>
-                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Amount *</label>
-                            <input type="number" name="amount" required step="0.01" min="0" placeholder="0.00" class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm">
-                        </div>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Description *</label>
-                        <input type="text" name="description" required placeholder="What was this expense for?" class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm">
-                    </div>
-                    <div class="grid grid-cols-2 gap-3">
-                        <div>
-                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Date *</label>
-                            <input type="date" name="expense_date" required value="{{ date('Y-m-d') }}" class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm">
-                        </div>
-                        <div>
-                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Status</label>
-                            <select name="status" class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm">
-                                <option value="pending">Pending</option>
-                                <option value="approved">Approved</option>
-                                <option value="paid">Paid</option>
-                            </select>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Allocation Method</label>
+                                <select name="allocation_method" class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                                    @foreach(\App\Models\Expense::allocationMethodLabels() as $val => $label)
+                                    <option value="{{ $val }}" @selected($val === 'by_quantity')>{{ $label }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Status</label>
+                                <select name="status" class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                                    <option value="pending">Pending</option>
+                                    <option value="approved">Approved</option>
+                                    <option value="paid">Paid</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
-                    <div class="grid grid-cols-2 gap-3">
+
+                    {{-- Divider --}}
+                    <div class="border-t border-gray-100 dark:border-gray-700"></div>
+
+                    {{-- Section: Additional --}}
+                    <div class="space-y-3">
+                        <h4 class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide">Additional Details</h4>
                         <div>
-                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Product Vendor (optional)</label>
-                            <select name="vendor_id" class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm">
-                                <option value="">None</option>
-                                @foreach($vendors ?? [] as $vendor)
-                                <option value="{{ $vendor->id }}">{{ $vendor->brand_name }}</option>
-                                @endforeach
-                            </select>
+                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Payment Method</label>
+                            <input type="text" name="payment_method" placeholder="Credit Card, Wire Transfer, etc." class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
                         </div>
                         <div>
-                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Service Vendor (who provided the service)</label>
-                            <select name="service_vendor_id" class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm">
-                                <option value="">None</option>
-                                @foreach($vendors ?? [] as $vendor)
-                                <option value="{{ $vendor->id }}">{{ $vendor->brand_name }}</option>
-                                @endforeach
-                            </select>
+                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Notes</label>
+                            <textarea name="notes" rows="2" placeholder="Any additional context..." class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"></textarea>
                         </div>
                     </div>
-                    <div class="grid grid-cols-2 gap-3">
-                        <div>
-                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Linked PO (optional)</label>
-                            <input type="number" name="purchase_order_id" min="1" placeholder="PO ID" class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm">
-                        </div>
-                        <div>
-                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Allocation Method</label>
-                            <select name="allocation_method" class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm">
-                                @foreach(\App\Models\Expense::allocationMethodLabels() as $val => $label)
-                                <option value="{{ $val }}" @selected($val === 'by_quantity')>{{ $label }}</option>
-                                @endforeach
-                            </select>
-                        </div>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Payment Method</label>
-                        <input type="text" name="payment_method" placeholder="CC, Wire..." class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Notes</label>
-                        <textarea name="notes" rows="2" class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm"></textarea>
-                    </div>
-                    <div class="flex items-center justify-end gap-2 pt-1 border-t border-gray-100 dark:border-gray-700">
-                        <button type="button" @click="show = false" class="px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">Cancel</button>
-                        <button type="submit" class="px-3 py-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg">Add Expense</button>
+
+                    {{-- Actions --}}
+                    <div class="flex items-center justify-end gap-2 pt-2 border-t border-gray-100 dark:border-gray-700">
+                        <button type="button" @click="show = false" class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">Cancel</button>
+                        <button type="submit" class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors shadow-sm">Save Expense</button>
                     </div>
                 </form>
             </div>
