@@ -101,7 +101,7 @@ class AmazonFinancialImportService
                 $cols = str_getcsv($line, "\t");
                 if (!$header) {
                     $header = array_map(fn($h) => strtolower(trim($h)), $cols);
-                    $header = array_map(fn($h) => preg_replace('/[^a-z0-9]+/', '_', $h), $header);
+                    $header = array_map(fn($h) => trim(preg_replace('/[^a-z0-9]+/', '_', $h), '_'), $header);
                     continue;
                 }
                 if (count($cols) === count($header)) {
@@ -116,7 +116,7 @@ class AmazonFinancialImportService
             while (($row = fgetcsv($handle)) !== false) {
                 if (!$header) {
                     $header = array_map(fn($h) => strtolower(trim($h)), $row);
-                    $header = array_map(fn($h) => preg_replace('/[^a-z0-9]+/', '_', $h), $header);
+                    $header = array_map(fn($h) => trim(preg_replace('/[^a-z0-9]+/', '_', $h), '_'), $header);
                     continue;
                 }
                 if (count($row) === count($header)) {
