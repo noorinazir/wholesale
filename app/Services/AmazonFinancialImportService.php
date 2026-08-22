@@ -276,10 +276,11 @@ PROMPT;
 
     private function storeTransactions(AmazonSettlementImport $import, array $parsed): void
     {
-        foreach ($parsed as $txn) {
-            $cleanStr = fn($v) => is_string($v) ? trim($v, " \t\n\r\"'") : $v;
+        $cleanStr = fn($v) => is_string($v) ? trim($v, " \t\n\r\"'") : $v;
+        $rows = [];
 
-            AmazonSettlementTransaction::create([
+        foreach ($parsed as $txn) {
+            $rows[] = [
                 'import_id' => $import->id,
                 'transaction_type' => $txn['transaction_type'] ?? 'other',
                 'order_id' => $cleanStr($txn['order_id'] ?? null),
@@ -298,9 +299,16 @@ PROMPT;
                 'posted_date' => $txn['posted_date'] ?? null,
                 'order_date' => $txn['order_date'] ?? null,
                 'fulfillment_channel' => $cleanStr($txn['fulfillment_channel'] ?? null),
-                'raw_data' => $txn,
+                'raw_data' => json_encode($txn),
                 'match_status' => 'unmatched',
-            ]);
+                'created_at' => now(),
+                'updated_at' => now(),
+            ];
+        }
+
+        // Batch insert in chunks to avoid memory issues
+        foreach (array_chunk($rows, 100) as $chunk) {
+            AmazonSettlementTransaction::insert($chunk);
         }
     }
 
@@ -308,13 +316,28 @@ PROMPT;
     {
         $transactions = $import->transactions()->where('match_status', 'unmatched')->get();
 
+        if ($transactions->isEmpty()) {
+            return;
+        }
+
         // Pre-load all active products once to avoid N+1 queries in name matching
         $allProducts = Product::where('status', '!=', 'discontinued')
             ->orWhereNull('status')
             ->get(['id', 'product_name', 'vendor_id', 'asin', 'sku']);
 
+        // Pre-compute product tokens and lowercased names once for all matching strategies
+        $productCache = [];
+        foreach ($allProducts as $product) {
+            $productCache[] = [
+                'product' => $product,
+                'name_lower' => strtolower($product->product_name),
+                'name_len' => strlen($product->product_name),
+                'tokens' => $this->extractSignificantTokens($product->product_name),
+            ];
+        }
+
         // Pre-load existing order IDs for batch matching
-        $orderIds = $transactions->filter(fn($t) => $t->order_id)->pluck('order_id')->unique()->toArray();
+        $orderIds = $transactions->filter(fn($t) => $t->order_id)->pluck('order_id')->unique()->values()->all();
         $existingOrders = !empty($orderIds)
             ? AmazonOrder::whereIn('amazon_order_id', $orderIds)->get()->keyBy('amazon_order_id')
             : collect();
@@ -328,18 +351,24 @@ PROMPT;
             'duplicate' => 0,
         ];
 
+        $updates = [];
         foreach ($transactions as $txn) {
-            $match = $this->matchSingle($txn, $allProducts, $existingOrders);
-            $txn->update($match);
-
-            // Track stats from the match result directly (no extra DB calls)
+            $match = $this->matchSingle($txn, $allProducts, $existingOrders, $productCache);
+            $updates[$txn->id] = $match;
             $stats[$match['match_status']] = ($stats[$match['match_status']] ?? 0) + 1;
         }
+
+        // Batch update in a single transaction to minimize DB round trips
+        DB::transaction(function () use ($updates) {
+            foreach ($updates as $txnId => $match) {
+                AmazonSettlementTransaction::where('id', $txnId)->update($match);
+            }
+        });
 
         Log::info('Settlement matching completed', ['import_id' => $import->id, 'stats' => $stats]);
     }
 
-    private function matchSingle(AmazonSettlementTransaction $txn, $allProducts = null, $existingOrders = null): array
+    private function matchSingle(AmazonSettlementTransaction $txn, $allProducts = null, $existingOrders = null, $productCache = null): array
     {
         $match = [
             'match_status' => 'unmatched',
@@ -409,20 +438,6 @@ PROMPT;
                 ? $existingOrders->get($orderId)
                 : AmazonOrder::where('amazon_order_id', $orderId)->first();
             if ($order) {
-                $existing = AmazonSettlementTransaction::where('order_id', $orderId)
-                    ->where('transaction_type', $txn->transaction_type)
-                    ->where('fee_type', $txn->fee_type)
-                    ->where('amount', $txn->amount)
-                    ->where('id', '!=', $txn->id)
-                    ->whereHas('import', fn($q) => $q->where('status', '!=', 'failed'))
-                    ->exists();
-
-                if ($existing) {
-                    $match['match_status'] = 'duplicate';
-                    $match['match_notes'] = 'Duplicate: same order_id, type, fee_type, and amount already imported';
-                    return $match;
-                }
-
                 $match['amazon_order_id'] = $order->id;
                 $match['product_id'] = $order->product_id;
                 $match['vendor_id'] = $order->vendor_id;
@@ -432,24 +447,8 @@ PROMPT;
             }
         }
 
-        // Duplicate detection for fee-type transactions without order_id
-        if (!$orderId && in_array($txn->transaction_type, ['fee', 'service_fee', 'storage_fee', 'advertising'])) {
-            $query = AmazonSettlementTransaction::where('transaction_type', $txn->transaction_type)
-                ->where('fee_type', $txn->fee_type)
-                ->where('amount', $txn->amount)
-                ->where('id', '!=', $txn->id)
-                ->whereHas('import', fn($q) => $q->where('status', '!=', 'failed'));
-
-            if ($txn->posted_date) {
-                $query->where('posted_date', $txn->posted_date);
-            }
-
-            if ($query->exists()) {
-                $match['match_status'] = 'duplicate';
-                $match['match_notes'] = 'Duplicate: same fee type, amount, and date already imported';
-                return $match;
-            }
-        }
+        // Duplicate detection for fee-type transactions without order_id — skipped during initial match
+        // Cross-import duplicate detection is done during commitImport
 
         // 2. Try matching by ASIN (use pre-loaded collection if available)
         if ($asin) {
@@ -487,7 +486,7 @@ PROMPT;
 
         // 4. PRIMARY: Fuzzy product name matching (main strategy for files without ASIN/SKU)
         if ($txn->product_name) {
-            $product = $this->matchByProductName($txn->product_name, $allProducts);
+            $product = $this->matchByProductName($txn->product_name, $allProducts, $productCache);
             if ($product) {
                 $match['product_id'] = $product->id;
                 $match['vendor_id'] = $product->vendor_id;
@@ -504,7 +503,7 @@ PROMPT;
      * Multi-strategy fuzzy product name matching.
      * Handles truncated, partial, or extra-text product names from settlement files.
      */
-    private function matchByProductName(string $settlementName, $allProducts = null): ?Product
+    private function matchByProductName(string $settlementName, $allProducts = null, $productCache = null): ?Product
     {
         $settlementName = trim($settlementName);
         // Strip trailing '...' that Amazon adds to truncated product names
@@ -514,40 +513,54 @@ PROMPT;
             return null;
         }
 
-        // Strategy 1: Exact LIKE (settlement name is substring of product name)
-        $product = Product::where('product_name', 'like', "%{$settlementName}%")->first();
-        if ($product) {
-            return $product;
+        $settlementLower = strtolower($settlementName);
+
+        // Use pre-computed cache if available, otherwise build it
+        if ($productCache === null) {
+            $products = $allProducts ?? Product::where('status', '!=', 'discontinued')->get(['id', 'product_name', 'vendor_id']);
+            $productCache = [];
+            foreach ($products as $product) {
+                $productCache[] = [
+                    'product' => $product,
+                    'name_lower' => strtolower($product->product_name),
+                    'name_len' => strlen($product->product_name),
+                    'tokens' => $this->extractSignificantTokens($product->product_name),
+                ];
+            }
         }
 
-        // Strategy 2: Reverse LIKE (product name is substring of settlement name)
-        $product = Product::whereRaw("? LIKE CONCAT('%', product_name, '%')", [$settlementName])
-            ->whereRaw('LENGTH(product_name) > 5')
-            ->orderByDesc('product_name')
-            ->first();
-        if ($product) {
-            return $product;
+        // Strategy 1: Settlement name is substring of product name (in-memory)
+        foreach ($productCache as $pc) {
+            if (str_contains($pc['name_lower'], $settlementLower)) {
+                return $pc['product'];
+            }
         }
 
-        // Strategy 3: Token-based matching using pre-loaded products (no DB query)
+        // Strategy 2: Product name is substring of settlement name (in-memory, longest product first)
+        $sortedCache = $productCache;
+        usort($sortedCache, fn($a, $b) => $b['name_len'] <=> $a['name_len']);
+        foreach ($sortedCache as $pc) {
+            if ($pc['name_len'] > 5 && str_contains($settlementLower, $pc['name_lower'])) {
+                return $pc['product'];
+            }
+        }
+
+        // Strategy 3: Token-based matching (in-memory, uses pre-computed tokens)
         $settlementTokens = $this->extractSignificantTokens($settlementName);
         if (count($settlementTokens) >= 2) {
-            $products = $allProducts ?? Product::where('status', '!=', 'discontinued')->get(['id', 'product_name', 'vendor_id']);
             $bestMatch = null;
             $bestScore = 0;
 
-            foreach ($products as $candidate) {
-                $candidateTokens = $this->extractSignificantTokens($candidate->product_name);
-                if (count($candidateTokens) === 0) {
+            foreach ($productCache as $pc) {
+                if (count($pc['tokens']) === 0) {
                     continue;
                 }
 
-                $score = $this->calculateTokenScore($settlementTokens, $candidateTokens);
+                $score = $this->calculateTokenScore($settlementTokens, $pc['tokens']);
 
-                // Require at least 35% token overlap for a match
                 if ($score > $bestScore && $score >= 0.35) {
                     $bestScore = $score;
-                    $bestMatch = $candidate;
+                    $bestMatch = $pc['product'];
                 }
             }
 
@@ -556,16 +569,17 @@ PROMPT;
             }
         }
 
-        // Strategy 4: Prefix matching — first N characters match
+        // Strategy 4: Prefix matching — first N characters match (in-memory)
         if (strlen($settlementName) > 10) {
-            $prefix = substr($settlementName, 0, min(25, strlen($settlementName)));
-            $product = Product::where('product_name', 'like', "{$prefix}%")->first();
-            if ($product) {
-                return $product;
+            $prefix = strtolower(substr($settlementName, 0, min(25, strlen($settlementName))));
+            foreach ($productCache as $pc) {
+                if (str_starts_with($pc['name_lower'], $prefix)) {
+                    return $pc['product'];
+                }
             }
         }
 
-        // Strategy 5: Match on longest significant word from settlement name
+        // Strategy 5: Match on longest significant word from settlement name (in-memory)
         $longestWord = '';
         foreach ($settlementTokens as $token) {
             if (strlen($token) > strlen($longestWord)) {
@@ -573,9 +587,11 @@ PROMPT;
             }
         }
         if (strlen($longestWord) >= 5) {
-            $product = Product::where('product_name', 'like', "%{$longestWord}%")->first();
-            if ($product) {
-                return $product;
+            $longestLower = strtolower($longestWord);
+            foreach ($productCache as $pc) {
+                if (str_contains($pc['name_lower'], $longestLower)) {
+                    return $pc['product'];
+                }
             }
         }
 
