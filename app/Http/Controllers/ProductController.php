@@ -300,7 +300,7 @@ class ProductController extends Controller
             }
         }
 
-        $textFields = ['asin', 'upc', 'image_url', 'notes', 'product_category', 'buy_box_type'];
+        $textFields = ['asin', 'sku', 'upc', 'image_url', 'notes', 'product_category', 'buy_box_type'];
         foreach ($textFields as $field) {
             if (array_key_exists($field, $validated) && $validated[$field] === null) {
                 $validated[$field] = '';

@@ -15,6 +15,7 @@ class ProductRequest extends FormRequest
     {
         return [
             'asin' => 'nullable|string|max:20',
+            'sku' => 'nullable|string|max:100',
             'upc' => 'nullable|string|max:20',
             'product_name' => 'required|string|max:255',
             'product_category' => 'nullable|string|max:255',

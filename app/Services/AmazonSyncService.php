@@ -44,6 +44,9 @@ class AmazonSyncService
             if (!empty($item['images'][0]['images'][0]['url'])) {
                 $updates['image_url'] = $item['images'][0]['images'][0]['url'];
             }
+            if (!empty($item['attributes']['seller_sku'][0]['value'])) {
+                $updates['sku'] = $item['attributes']['seller_sku'][0]['value'];
+            }
 
             $updates['amazon_last_synced_at'] = now();
             $updates['amazon_sync_status'] = 'synced';

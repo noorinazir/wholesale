@@ -28,6 +28,10 @@
             <p x-show="asinWarning" x-transition class="text-xs text-amber-600 dark:text-amber-400 mt-1" x-text="asinWarning"></p>
         </div>
         <div>
+            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">SKU</label>
+            <input type="text" name="sku" value="{{ $product?->sku }}" class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm">
+        </div>
+        <div>
             <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Category</label>
             <select name="product_category" class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm">
                 <option value="">Select...</option>
