@@ -327,7 +327,7 @@
                                 <span class="px-2 py-0.5 text-xs rounded-md bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400">{{ $catLabels[$expense->category] ?? ucfirst($expense->category) }}</span>
                             </td>
                             <td class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300">
-                                @if($expense->serviceVendor)
+                                @if($expense->relationLoaded('serviceVendor') && $expense->serviceVendor)
                                     <span class="text-xs">{{ $expense->serviceVendor->brand_name }}</span>
                                 @else
                                     <span class="text-xs text-gray-400">—</span>

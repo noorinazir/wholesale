@@ -193,7 +193,14 @@ class FinanceController extends Controller
 
     public function purchaseOrderShow($id)
     {
-        $po = PurchaseOrder::with(['vendor', 'items.product', 'expenses.serviceVendor'])->findOrFail($id);
+        $with = ['vendor', 'items.product', 'expenses'];
+        try {
+            if (DB::getSchemaBuilder()->hasColumn('expenses', 'service_vendor_id')) {
+                $with[] = 'expenses.serviceVendor';
+            }
+        } catch (\Exception $e) {
+        }
+        $po = PurchaseOrder::with($with)->findOrFail($id);
 
         // Get all sales linked to this PO
         $linkedSales = AmazonOrder::where('purchase_order_id', $po->id)
@@ -1280,7 +1287,14 @@ class FinanceController extends Controller
     // === Expenses ===
     public function expenseIndex(Request $request)
     {
-        $query = Expense::with(['vendor:id,brand_name', 'serviceVendor:id,brand_name', 'product:id,product_name', 'purchaseOrder:id,po_number']);
+        $with = ['vendor:id,brand_name', 'product:id,product_name', 'purchaseOrder:id,po_number'];
+        try {
+            if (DB::getSchemaBuilder()->hasColumn('expenses', 'service_vendor_id')) {
+                $with[] = 'serviceVendor:id,brand_name';
+            }
+        } catch (\Exception $e) {
+        }
+        $query = Expense::with($with);
 
         if ($search = $request->input('search')) {
             $query->where(function ($q) use ($search) {
@@ -1361,6 +1375,18 @@ class FinanceController extends Controller
             $validated['allocation_method'] = 'none';
         } else {
             $validated['allocation_method'] = $validated['allocation_method'] ?? 'by_quantity';
+        }
+
+        // Remove new columns if migration hasn't been run yet (pre-migration safety)
+        $hasNewColumns = cache()->remember('expenses_has_landed_cost_columns', 300, function () {
+            try {
+                return DB::getSchemaBuilder()->hasColumn('expenses', 'service_vendor_id');
+            } catch (\Exception $e) {
+                return false;
+            }
+        });
+        if (!$hasNewColumns) {
+            unset($validated['service_vendor_id'], $validated['allocation_method']);
         }
 
         $expense = Expense::create($validated);
