@@ -180,6 +180,7 @@ class AmazonFinancialImportService
                 'revenue' => (float)($this->pickField($row, ['total_product_charges', 'product_charges', 'item_price', 'sale_price']) ?? 0),
                 'amazon_fees' => (float)($this->pickField($row, ['amazon_fees', 'amazon_fee']) ?? 0),
                 'promotional_rebates' => (float)($this->pickField($row, ['total_promotional_rebates', 'promotional_rebates']) ?? 0),
+                'other_amount' => (float)($this->pickField($row, ['other']) ?? 0),
                 'fee_type' => $this->guessFeeType($row),
                 'currency' => $this->pickField($row, ['currency', 'currency_code']) ?? 'USD',
                 'transaction_description' => $this->pickField($row, ['transaction_description', 'transaction_type', 'product_details', 'description', 'amount_description', 'amount_type', 'type']),
@@ -188,6 +189,11 @@ class AmazonFinancialImportService
                 'fulfillment_channel' => $this->pickField($row, ['fulfillment_channel', 'channel', 'fulfillment_id']),
                 'settlement_id' => $this->pickField($row, ['settlement_id']),
             ];
+
+            // Normalize --- as null for order_id (Amazon uses --- for non-order transactions)
+            if ($txn['order_id'] === '---') {
+                $txn['order_id'] = null;
+            }
 
             $parsed[] = $txn;
         }
@@ -282,6 +288,10 @@ PROMPT;
                 'asin' => $cleanStr($txn['asin'] ?? null),
                 'product_name' => $cleanStr($txn['product_name'] ?? null),
                 'amount' => (float)($txn['amount'] ?? 0),
+                'revenue' => (float)($txn['revenue'] ?? 0),
+                'amazon_fees_amount' => (float)($txn['amazon_fees'] ?? 0),
+                'promotional_rebates' => (float)($txn['promotional_rebates'] ?? 0),
+                'other_amount' => (float)($txn['other_amount'] ?? 0),
                 'fee_type' => $cleanStr($txn['fee_type'] ?? null),
                 'currency' => $txn['currency'] ?? 'USD',
                 'transaction_description' => $cleanStr($txn['transaction_description'] ?? null),
@@ -327,6 +337,25 @@ PROMPT;
         $orderId = $txn->order_id ? trim($txn->order_id) : null;
         $asin = $txn->asin ? trim($txn->asin) : null;
         $sku = $txn->sku ? trim($txn->sku) : null;
+
+        // Skip product matching for service fees, transfers, and adjustments without order IDs
+        // These are platform-level fees, not product-specific
+        if (!$orderId && in_array($txn->transaction_type, ['service_fee', 'transfer'])) {
+            $match['match_notes'] = 'Skipped: ' . $txn->transaction_type . ' without order_id';
+            return $match;
+        }
+
+        // For adjustments (reimbursements/liquidations) without order_id, try product matching only if product_name looks like a real product
+        if (!$orderId && $txn->transaction_type === 'adjustment') {
+            $productName = trim($txn->product_name ?? '');
+            // FBA Inventory Reimbursement, FBA Reversed Reimbursement, etc. are not product names
+            if (str_contains(strtolower($productName), 'reimbursement') || 
+                str_contains(strtolower($productName), 'successful charge') ||
+                str_contains(strtolower($productName), 'disbursed')) {
+                $match['match_notes'] = 'Skipped: adjustment with non-product description';
+                return $match;
+            }
+        }
 
         // If no ASIN, try to extract from product_name/product_details
         if (!$asin && $txn->product_name) {
@@ -435,6 +464,9 @@ PROMPT;
     private function matchByProductName(string $settlementName): ?Product
     {
         $settlementName = trim($settlementName);
+        // Strip trailing '...' that Amazon adds to truncated product names
+        $settlementName = preg_replace('/\s*\.\.\.\s*$/', '', $settlementName);
+        $settlementName = rtrim($settlementName, '.');
         if (strlen($settlementName) < 3) {
             return null;
         }
@@ -602,7 +634,10 @@ PROMPT;
         DB::transaction(function () use ($transactions, &$stats, $import) {
             foreach ($transactions as $txn) {
                 try {
+                    $amount = (float)$txn->amount;
+
                     if (in_array($txn->transaction_type, ['fee', 'service_fee', 'storage_fee', 'advertising'])) {
+                        // Amazon fees and service fees → create expense
                         $expense = $this->createExpenseFromTransaction($txn, $import);
                         if ($expense) {
                             $newStatus = $txn->match_status;
@@ -617,10 +652,54 @@ PROMPT;
                             ]);
                             $stats['expenses_created']++;
                         }
+                    } elseif ($txn->transaction_type === 'adjustment') {
+                        // Inventory reimbursements, liquidations, reversed reimbursements
+                        // Positive = income (reimbursement), negative = expense (liquidation loss)
+                        if ($amount > 0) {
+                            // Reimbursement — record as negative expense (income adjustment)
+                            $expense = $this->createExpenseFromTransaction($txn, $import);
+                            if ($expense) {
+                                $txn->update([
+                                    'expense_id' => $expense->id,
+                                    'match_status' => $txn->match_status === 'unmatched' ? 'unmatched' : $txn->match_status,
+                                ]);
+                                $stats['expenses_created']++;
+                            }
+                        } elseif ($amount < 0) {
+                            // Liquidation or reversed reimbursement — record as expense
+                            $expense = $this->createExpenseFromTransaction($txn, $import);
+                            if ($expense) {
+                                $txn->update([
+                                    'expense_id' => $expense->id,
+                                    'match_status' => $txn->match_status === 'unmatched' ? 'unmatched' : $txn->match_status,
+                                ]);
+                                $stats['expenses_created']++;
+                            }
+                        }
+                    } elseif ($txn->transaction_type === 'transfer') {
+                        // Bank disbursements, seller repayments — mark as ignored (not P&L items)
+                        $txn->update(['match_status' => 'ignored']);
                     } elseif (in_array($txn->transaction_type, ['order', 'refund'])) {
-                        $updated = $this->reconcileOrderFromTransaction($txn);
-                        if ($updated) {
-                            $stats['orders_updated']++;
+                        // Matched orders — reconcile revenue and fees
+                        if ($txn->amazon_order_id) {
+                            $updated = $this->reconcileOrderFromTransaction($txn);
+                            if ($updated) {
+                                $stats['orders_updated']++;
+                            }
+                        } elseif ($txn->product_id && $txn->transaction_type === 'order') {
+                            // Order matched to product but no AmazonOrder record exists
+                            // Create expense for Amazon fees if present
+                            $amazonFees = abs((float)$txn->amazon_fees_amount);
+                            if ($amazonFees > 0) {
+                                $feeTxn = clone $txn;
+                                $feeTxn->amount = $amazonFees;
+                                $feeTxn->fee_type = 'referral';
+                                $expense = $this->createExpenseFromTransaction($feeTxn, $import);
+                                if ($expense) {
+                                    $txn->update(['expense_id' => $expense->id]);
+                                    $stats['expenses_created']++;
+                                }
+                            }
                         }
                     }
                 } catch (\Exception $e) {
@@ -645,10 +724,15 @@ PROMPT;
         }
 
         $categoryMap = [
-            'fba' => 'amazon_fees',
-            'referral' => 'amazon_fees',
+            'fba' => 'fba_fees',
+            'referral' => 'amazon_referral',
             'storage' => 'storage',
             'advertising' => 'advertising',
+            'subscription' => 'amazon_fees',
+            'inbound_transport' => 'freight',
+            'inbound_placement' => 'amazon_fees',
+            'reimbursement' => 'other',
+            'liquidation' => 'returns',
             'other' => 'other',
         ];
 
@@ -697,6 +781,8 @@ PROMPT;
         }
 
         $amount = (float)$txn->amount;
+        $revenue = (float)$txn->revenue;
+        $amazonFees = abs((float)$txn->amazon_fees_amount);
         $updated = false;
 
         if ($txn->transaction_type === 'refund') {
@@ -706,10 +792,21 @@ PROMPT;
                 $updated = true;
             }
         } elseif ($txn->transaction_type === 'order' && $amount > 0) {
+            // Use revenue (Total product charges) if available, otherwise use net amount
+            $actualRevenue = $revenue > 0 ? $revenue : $amount;
             $recordedRevenue = (float)$order->total_revenue;
-            if (abs($recordedRevenue - $amount) > 0.01) {
-                $order->update(['total_revenue' => round($amount, 2)]);
+            if (abs($recordedRevenue - $actualRevenue) > 0.01) {
+                $order->update(['total_revenue' => round($actualRevenue, 2)]);
                 $updated = true;
+            }
+
+            // Update amazon_referral_fee from settlement if it was zero or significantly different
+            if ($amazonFees > 0) {
+                $recordedFee = (float)$order->amazon_referral_fee;
+                if (abs($recordedFee - $amazonFees) > 0.01) {
+                    $order->update(['amazon_referral_fee' => round($amazonFees, 2)]);
+                    $updated = true;
+                }
             }
 
             // If referral fee was never calculated but rate is set, calculate it now
@@ -742,10 +839,18 @@ PROMPT;
         if ($explicitType) {
             $typeLower = strtolower(trim($explicitType));
             $typeMap = [
+                'order payment' => 'order',
                 'order' => 'order',
                 'refund' => 'refund',
                 'service fee' => 'service_fee',
                 'service_fee' => 'service_fee',
+                'service fees' => 'service_fee',
+                'liquidation' => 'adjustment',
+                'inventory reimbursement' => 'adjustment',
+                'paid to amazon' => 'transfer',
+                'seller repayment' => 'transfer',
+                'micro deposit' => 'transfer',
+                'disbursed' => 'transfer',
                 'fba inventory fee' => 'fee',
                 'cost of advertising' => 'advertising',
                 'advertising' => 'advertising',
@@ -768,9 +873,18 @@ PROMPT;
         $desc = strtolower(implode(' ', array_values($row)));
 
         if (str_contains($desc, 'refund')) return 'refund';
+        if (str_contains($desc, 'order payment')) return 'order';
         if (str_contains($desc, 'order')) return 'order';
+        if (str_contains($desc, 'liquidation')) return 'adjustment';
+        if (str_contains($desc, 'reimbursement')) return 'adjustment';
+        if (str_contains($desc, 'paid to amazon') || str_contains($desc, 'seller repayment')) return 'transfer';
+        if (str_contains($desc, 'micro deposit') || str_contains($desc, 'disbursed')) return 'transfer';
         if (str_contains($desc, 'advertising') || str_contains($desc, 'sponsored') || str_contains($desc, 'ppc')) return 'advertising';
         if (str_contains($desc, 'storage')) return 'storage_fee';
+        if (str_contains($desc, 'subscription')) return 'service_fee';
+        if (str_contains($desc, 'inbound transportation')) return 'service_fee';
+        if (str_contains($desc, 'inbound placement')) return 'service_fee';
+        if (str_contains($desc, 'partnered carrier')) return 'service_fee';
         if (str_contains($desc, 'fba') || str_contains($desc, 'fulfillment')) return 'fee';
         if (str_contains($desc, 'commission') || str_contains($desc, 'referral')) return 'fee';
         if (str_contains($desc, 'transfer') || str_contains($desc, 'payout')) return 'transfer';
@@ -782,21 +896,22 @@ PROMPT;
 
     private function guessFeeType(array $row): ?string
     {
-        $typeDesc = $this->pickField($row, ['transaction_type', 'amount_type', 'amount_description', 'description', 'type']);
-        if ($typeDesc) {
-            $descLower = strtolower($typeDesc);
-            if (str_contains($descLower, 'fba') || str_contains($descLower, 'fulfillment')) return 'fba';
-            if (str_contains($descLower, 'commission') || str_contains($descLower, 'referral')) return 'referral';
-            if (str_contains($descLower, 'storage')) return 'storage';
-            if (str_contains($descLower, 'advertising') || str_contains($descLower, 'sponsored') || str_contains($descLower, 'ppc')) return 'advertising';
-        }
+        // Check both the transaction_type and product_details/description columns
+        $typeDesc = $this->pickField($row, ['transaction_type', 'amount_type', 'amount_description', 'product_details', 'description', 'type']);
+        $allDesc = strtolower(implode(' ', array_filter(array_values($row), fn($v) => is_string($v))));
+        $descLower = $typeDesc ? strtolower($typeDesc) : '';
+        $combined = $descLower . ' ' . $allDesc;
 
-        $desc = strtolower(implode(' ', array_values($row)));
-
-        if (str_contains($desc, 'fba') || str_contains($desc, 'fulfillment')) return 'fba';
-        if (str_contains($desc, 'commission') || str_contains($desc, 'referral')) return 'referral';
-        if (str_contains($desc, 'storage')) return 'storage';
-        if (str_contains($desc, 'advertising') || str_contains($desc, 'sponsored') || str_contains($desc, 'ppc')) return 'advertising';
+        // Specific fee types from Amazon settlement descriptions
+        if (str_contains($combined, 'subscription')) return 'subscription';
+        if (str_contains($combined, 'inbound transportation') || str_contains($combined, 'partnered carrier')) return 'inbound_transport';
+        if (str_contains($combined, 'inbound placement')) return 'inbound_placement';
+        if (str_contains($combined, 'storage')) return 'storage';
+        if (str_contains($combined, 'advertising') || str_contains($combined, 'sponsored') || str_contains($combined, 'ppc')) return 'advertising';
+        if (str_contains($combined, 'commission') || str_contains($combined, 'referral')) return 'referral';
+        if (str_contains($combined, 'fba') || str_contains($combined, 'fulfillment')) return 'fba';
+        if (str_contains($combined, 'reimbursement')) return 'reimbursement';
+        if (str_contains($combined, 'liquidation')) return 'liquidation';
 
         return null;
     }

@@ -12,7 +12,8 @@ class AmazonSettlementTransaction extends Model
 
     protected $fillable = [
         'import_id', 'transaction_type', 'order_id', 'merchant_order_id', 'sku', 'asin',
-        'product_name', 'amount', 'fee_type', 'currency', 'transaction_description',
+        'product_name', 'amount', 'revenue', 'amazon_fees_amount', 'promotional_rebates', 'other_amount',
+        'fee_type', 'currency', 'transaction_description',
         'posted_date', 'order_date', 'fulfillment_channel',
         'match_status', 'amazon_order_id', 'product_id', 'vendor_id', 'expense_id',
         'match_notes', 'raw_data',
@@ -22,6 +23,10 @@ class AmazonSettlementTransaction extends Model
     {
         return [
             'amount' => 'decimal:2',
+            'revenue' => 'decimal:2',
+            'amazon_fees_amount' => 'decimal:2',
+            'promotional_rebates' => 'decimal:2',
+            'other_amount' => 'decimal:2',
             'posted_date' => 'date',
             'order_date' => 'date',
             'raw_data' => 'array',
@@ -56,7 +61,7 @@ class AmazonSettlementTransaction extends Model
     public static function transactionTypeLabels(): array
     {
         return [
-            'order' => 'Order',
+            'order' => 'Order Payment',
             'refund' => 'Refund',
             'fee' => 'Fee',
             'adjustment' => 'Adjustment',
