@@ -341,6 +341,7 @@ PROMPT;
             }
         }
 
+        // 1. Try matching by order_id first (most precise)
         if ($orderId) {
             $order = AmazonOrder::where('amazon_order_id', $orderId)->first();
             if ($order) {
@@ -386,6 +387,7 @@ PROMPT;
             }
         }
 
+        // 2. Try matching by ASIN
         if ($asin) {
             $product = Product::where('asin', $asin)->first()
                 ?? Product::where('asin', 'ilike', $asin)->first();
@@ -398,6 +400,7 @@ PROMPT;
             }
         }
 
+        // 3. Try matching by SKU
         if ($sku) {
             $product = Product::where('sku', $sku)->first()
                 ?? Product::where('asin', $sku)->first();
@@ -410,19 +413,9 @@ PROMPT;
             }
         }
 
+        // 4. PRIMARY: Fuzzy product name matching (main strategy for files without ASIN/SKU)
         if ($txn->product_name) {
-            $productName = trim($txn->product_name);
-            // Try: settlement product name is part of a product name in DB
-            $product = Product::where('product_name', 'like', "%{$productName}%")->first();
-            if (!$product) {
-                // Try reverse: product name in DB is part of settlement product name
-                $product = Product::whereRaw('? LIKE CONCAT('%', product_name, '%')', [$productName])->first();
-            }
-            if (!$product && strlen($productName) > 10) {
-                // Try matching on first 20 chars of product name
-                $prefix = substr($productName, 0, 20);
-                $product = Product::where('product_name', 'like', "{$prefix}%")->first();
-            }
+            $product = $this->matchByProductName($txn->product_name);
             if ($product) {
                 $match['product_id'] = $product->id;
                 $match['vendor_id'] = $product->vendor_id;
@@ -433,6 +426,163 @@ PROMPT;
         }
 
         return $match;
+    }
+
+    /**
+     * Multi-strategy fuzzy product name matching.
+     * Handles truncated, partial, or extra-text product names from settlement files.
+     */
+    private function matchByProductName(string $settlementName): ?Product
+    {
+        $settlementName = trim($settlementName);
+        if (strlen($settlementName) < 3) {
+            return null;
+        }
+
+        // Strategy 1: Exact LIKE (settlement name is substring of product name)
+        $product = Product::where('product_name', 'like', "%{$settlementName}%")->first();
+        if ($product) {
+            return $product;
+        }
+
+        // Strategy 2: Reverse LIKE (product name is substring of settlement name)
+        $product = Product::whereRaw('? LIKE CONCAT('%', product_name, '%')', [$settlementName])
+            ->whereRaw('LENGTH(product_name) > 5')
+            ->orderByDesc('product_name')
+            ->first();
+        if ($product) {
+            return $product;
+        }
+
+        // Strategy 3: Token-based matching — split both names into significant words,
+        // find products where most significant tokens match
+        $settlementTokens = $this->extractSignificantTokens($settlementName);
+        if (count($settlementTokens) >= 2) {
+            $allProducts = Product::where('status', '!=', 'discontinued')->get(['id', 'product_name', 'vendor_id']);
+            $bestMatch = null;
+            $bestScore = 0;
+
+            foreach ($allProducts as $candidate) {
+                $candidateTokens = $this->extractSignificantTokens($candidate->product_name);
+                if (count($candidateTokens) === 0) {
+                    continue;
+                }
+
+                $score = $this->calculateTokenScore($settlementTokens, $candidateTokens);
+
+                // Require at least 50% token overlap for a match
+                if ($score > $bestScore && $score >= 0.5) {
+                    $bestScore = $score;
+                    $bestMatch = $candidate;
+                }
+            }
+
+            if ($bestMatch) {
+                return $bestMatch;
+            }
+        }
+
+        // Strategy 4: Prefix matching — first N characters match
+        if (strlen($settlementName) > 10) {
+            $prefix = substr($settlementName, 0, min(25, strlen($settlementName)));
+            $product = Product::where('product_name', 'like', "{$prefix}%")->first();
+            if ($product) {
+                return $product;
+            }
+        }
+
+        // Strategy 5: Match on longest significant word from settlement name
+        $longestWord = '';
+        foreach ($settlementTokens as $token) {
+            if (strlen($token) > strlen($longestWord)) {
+                $longestWord = $token;
+            }
+        }
+        if (strlen($longestWord) >= 5) {
+            $product = Product::where('product_name', 'like', "%{$longestWord}%")->first();
+            if ($product) {
+                return $product;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Extract significant tokens from a product name.
+     * Removes common stop words, normalizes case, removes special chars.
+     */
+    private function extractSignificantTokens(string $name): array
+    {
+        // Normalize: lowercase, remove special chars, split on whitespace
+        $normalized = strtolower(preg_replace('/[^a-zA-Z0-9\s]/', ' ', $name));
+        $words = preg_split('/\s+/', $normalized, -1, PREG_SPLIT_NO_EMPTY);
+
+        // Stop words that don't carry product identity
+        $stopWords = [
+            'the', 'a', 'an', 'and', 'or', 'with', 'for', 'of', 'in', 'on', 'at', 'to',
+            'by', 'from', 'up', 'out', 'is', 'it', 'this', 'that', 'pack', 'set',
+            'new', 'free', 'ship', 'shipping', 'each', 'per', 'unit', 'qty', 'quantity',
+            'color', 'colour', 'size', 'black', 'white', 'red', 'blue', 'green',
+            'x', 'xl', 'xxl', 'small', 'medium', 'large',
+            'inc', 'llc', 'co', 'corp',
+        ];
+
+        $tokens = [];
+        foreach ($words as $word) {
+            $word = trim($word);
+            // Skip stop words, short words (<=2 chars), and pure numbers
+            if (strlen($word) <= 2) {
+                continue;
+            }
+            if (in_array($word, $stopWords)) {
+                continue;
+            }
+            // Skip pure numbers (model numbers handled separately)
+            if (ctype_digit($word)) {
+                continue;
+            }
+            $tokens[] = $word;
+        }
+
+        return array_unique($tokens);
+    }
+
+    /**
+     * Calculate a similarity score between two token sets (0 to 1).
+     * Uses Jaccard-like index weighted by token length (longer tokens = more significant).
+     */
+    private function calculateTokenScore(array $tokensA, array $tokensB): float
+    {
+        if (empty($tokensA) || empty($tokensB)) {
+            return 0;
+        }
+
+        $setA = array_flip($tokensA);
+        $setB = array_flip($tokensB);
+
+        $intersection = array_intersect_key($setA, $setB);
+        $union = array_unique(array_merge($tokensA, $tokensB));
+
+        if (count($union) === 0) {
+            return 0;
+        }
+
+        // Base score: Jaccard index
+        $jaccard = count($intersection) / count($union);
+
+        // Bonus: weight by significance of matched tokens (longer words matter more)
+        $weightBonus = 0;
+        foreach (array_keys($intersection) as $matchedToken) {
+            $len = strlen($matchedToken);
+            if ($len >= 7) {
+                $weightBonus += 0.1;
+            } elseif ($len >= 5) {
+                $weightBonus += 0.05;
+            }
+        }
+
+        return min(1.0, $jaccard + $weightBonus);
     }
 
     public function commitImport(AmazonSettlementImport $import): array
