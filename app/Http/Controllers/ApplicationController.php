@@ -1142,7 +1142,7 @@ class ApplicationController extends Controller
         $numericDefaults = [
             'buying_price' => 0, 'fba_fee' => 0, 'shipping_cost' => 0,
             'labeling_cost' => 0, 'other_costs' => 0, 'operation_cost' => 0,
-            'amazon_sell_price' => 0, 'referral_fee_percent' => 15.00,
+            'amazon_sell_price' => 0, 'referral_fee_percent' => 0,
             'number_of_sellers' => 0, 'bsr_rank' => null,
             'review_count' => null, 'review_rating' => null,
         ];
@@ -1181,7 +1181,7 @@ class ApplicationController extends Controller
         $numericDefaults = [
             'buying_price' => 0, 'fba_fee' => 0, 'shipping_cost' => 0,
             'labeling_cost' => 0, 'other_costs' => 0, 'operation_cost' => 0,
-            'amazon_sell_price' => 0, 'referral_fee_percent' => 15.00,
+            'amazon_sell_price' => 0, 'referral_fee_percent' => 0,
             'number_of_sellers' => 0, 'bsr_rank' => null,
             'review_count' => null, 'review_rating' => null,
         ];
@@ -1227,7 +1227,7 @@ class ApplicationController extends Controller
         $numericDefaults = [
             'buying_price' => 0, 'fba_fee' => 0, 'shipping_cost' => 0,
             'labeling_cost' => 0, 'other_costs' => 0, 'operation_cost' => 0,
-            'amazon_sell_price' => 0, 'referral_fee_percent' => 15.00,
+            'amazon_sell_price' => 0, 'referral_fee_percent' => 0,
             'number_of_sellers' => 0,
         ];
         foreach ($numericDefaults as $field => $default) {

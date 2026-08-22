@@ -10,7 +10,7 @@
         'otherCosts' => (float)($product?->other_costs ?? 0),
         'operationCost' => (float)($product?->operation_cost ?? 0),
         'sellPrice' => (float)($product?->amazon_sell_price ?? 0),
-        'referralPercent' => (float)($product?->referral_fee_percent ?? 15.00),
+        'referralPercent' => (float)($product?->referral_fee_percent ?? 0),
         'existingAsins' => $existingAsins,
     ];
 @endphp
@@ -86,7 +86,7 @@
             </div>
             <div>
                 <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Referral Fee %</label>
-                <input type="number" step="0.01" min="0" max="100" name="referral_fee_percent" x-model.number="referralPercent" value="{{ $product?->referral_fee_percent ?? 15.00 }}" class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm">
+                <input type="number" step="0.01" min="0" max="100" name="referral_fee_percent" x-model.number="referralPercent" value="{{ $product?->referral_fee_percent ?? 0 }}" class="block w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 text-sm">
             </div>
             <div class="rounded-lg p-3" :class="netProfit > 0 ? 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800' : 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800'">
                 <div class="flex items-center justify-between text-xs">

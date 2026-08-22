@@ -245,7 +245,7 @@
                 otherCosts: initial.otherCosts || 0,
                 operationCost: initial.operationCost || 0,
                 sellPrice: initial.sellPrice || 0,
-                referralPercent: initial.referralPercent || 15.00,
+                referralPercent: initial.referralPercent || 0,
                 existingAsins: initial.existingAsins || {},
                 get totalCost() {
                     const referral = (this.sellPrice || 0) * (this.referralPercent || 0) / 100;

@@ -328,7 +328,7 @@
                 otherCosts: 0,
                 operationCost: 0,
                 sellPrice: 0,
-                referralPercent: 15.00,
+                referralPercent: 0,
                 existingAsins: @json(\App\Models\Product::whereNotNull('asin')->pluck('product_name', 'asin')->toArray()),
                 get totalCost() {
                     return (this.buyingPrice || 0) + (this.fbaFee || 0) + (this.shippingCost || 0) +

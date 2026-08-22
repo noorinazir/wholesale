@@ -201,7 +201,7 @@ class AmazonSyncService
                             $itemPrice = (float)($item['ItemPrice']['Amount'] ?? 0);
                             $totalRevenue = $itemPrice * $quantity;
 
-                            $referralRate = $product ? (float)$product->referral_fee_percent : 15;
+                            $referralRate = $product ? (float)$product->referral_fee_percent : 0;
 
                             // Calculate tax based on shipping state
                             $taxState = strtoupper(substr($amazonOrder['ShippingAddress']['StateOrRegion'] ?? '', 0, 2));

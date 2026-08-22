@@ -287,7 +287,7 @@ class ProductController extends Controller
             'other_costs' => 0,
             'operation_cost' => 0,
             'amazon_sell_price' => 0,
-            'referral_fee_percent' => 15.00,
+            'referral_fee_percent' => 0,
             'number_of_sellers' => 0,
             'bsr_rank' => null,
             'review_count' => null,
