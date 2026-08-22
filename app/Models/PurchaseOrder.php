@@ -73,40 +73,44 @@ class PurchaseOrder extends Model
     {
         $this->recalculate();
 
-        $totalExpenses = $this->expenses()
-            ->whereIn('status', ['approved', 'paid'])
-            ->sum('amount');
+        try {
+            $totalExpenses = $this->expenses()
+                ->whereIn('status', ['approved', 'paid'])
+                ->sum('amount');
 
-        $totalQty = $this->items->sum('quantity_ordered');
-        $poLevelCosts = (float)$this->shipping_cost + (float)$this->tax_amount - (float)$this->discount_amount;
+            $totalQty = $this->items->sum('quantity_ordered');
+            $poLevelCosts = (float)$this->shipping_cost + (float)$this->tax_amount - (float)$this->discount_amount;
 
-        foreach ($this->items as $item) {
-            $landedPerUnit = $item->calculateLandedCost();
-            $myQty = $item->quantity_ordered;
+            foreach ($this->items as $item) {
+                $landedPerUnit = $item->calculateLandedCost();
+                $myQty = $item->quantity_ordered;
 
-            $allocatedPoCosts = $totalQty > 0
-                ? $poLevelCosts * ($myQty / $totalQty)
-                : 0;
+                $allocatedPoCosts = $totalQty > 0
+                    ? $poLevelCosts * ($myQty / $totalQty)
+                    : 0;
 
-            $allocatedExpenses = ($landedPerUnit * $myQty)
-                - ($item->unit_total_cost * $myQty)
-                - $allocatedPoCosts;
+                $allocatedExpenses = ($landedPerUnit * $myQty)
+                    - ($item->unit_total_cost * $myQty)
+                    - $allocatedPoCosts;
 
-            $item->update([
-                'allocated_po_shipping' => round($totalQty > 0 ? (float)$this->shipping_cost * ($myQty / $totalQty) : 0, 2),
-                'allocated_po_tax' => round($totalQty > 0 ? ((float)$this->tax_amount - (float)$this->discount_amount) * ($myQty / $totalQty) : 0, 2),
-                'allocated_expense_cost' => round(max(0, $allocatedExpenses) / max(1, $myQty), 2),
-                'landed_cost_per_unit' => $landedPerUnit,
-                'landed_cost_total' => round($landedPerUnit * $myQty, 2),
+                $item->update([
+                    'allocated_po_shipping' => round($totalQty > 0 ? (float)$this->shipping_cost * ($myQty / $totalQty) : 0, 2),
+                    'allocated_po_tax' => round($totalQty > 0 ? ((float)$this->tax_amount - (float)$this->discount_amount) * ($myQty / $totalQty) : 0, 2),
+                    'allocated_expense_cost' => round(max(0, $allocatedExpenses) / max(1, $myQty), 2),
+                    'landed_cost_per_unit' => $landedPerUnit,
+                    'landed_cost_total' => round($landedPerUnit * $myQty, 2),
+                ]);
+            }
+
+            $totalLandedCost = $this->items->sum(fn($i) => (float)$i->landed_cost_total);
+
+            $this->update([
+                'total_expenses' => round($totalExpenses, 2),
+                'total_landed_cost' => round($totalLandedCost, 2),
             ]);
+        } catch (\Exception $e) {
+            // Migration not run yet — fall back to basic recalculate only
         }
-
-        $totalLandedCost = $this->items->sum(fn($i) => (float)$i->landed_cost_total);
-
-        $this->update([
-            'total_expenses' => round($totalExpenses, 2),
-            'total_landed_cost' => round($totalLandedCost, 2),
-        ]);
     }
 
     public function getTotalLandedCostAttribute(): float

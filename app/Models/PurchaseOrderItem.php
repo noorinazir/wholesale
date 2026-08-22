@@ -96,43 +96,51 @@ class PurchaseOrderItem extends Model
             : 0;
 
         // Allocated expenses (approved + paid only)
-        $myExpenseShare = 0;
+        // Wrapped in try-catch for backward compatibility before migration is run
+        $totalExpenseShare = 0;
 
-        // PO-wide expenses (no product_id, by_quantity or by_value)
-        $poWideExpenses = $po->expenses()
-            ->whereIn('status', ['approved', 'paid'])
-            ->whereNull('product_id')
-            ->where('allocation_method', '!=', 'none')
-            ->get();
+        try {
+            $myExpenseShare = 0;
 
-        foreach ($poWideExpenses as $expense) {
-            if ($expense->allocation_method === 'by_quantity') {
-                $myExpenseShare += $totalQty > 0
-                    ? (float)$expense->amount * ($myQty / $totalQty)
-                    : 0;
-            } elseif ($expense->allocation_method === 'by_value') {
-                $totalValue = $po->items->sum(fn($i) => (float)$i->line_total);
-                $myValue = (float)$this->line_total;
-                $myExpenseShare += $totalValue > 0
-                    ? (float)$expense->amount * ($myValue / $totalValue)
-                    : 0;
+            // PO-wide expenses (no product_id, by_quantity or by_value)
+            $poWideExpenses = $po->expenses()
+                ->whereIn('status', ['approved', 'paid'])
+                ->whereNull('product_id')
+                ->where('allocation_method', '!=', 'none')
+                ->get();
+
+            foreach ($poWideExpenses as $expense) {
+                if ($expense->allocation_method === 'by_quantity') {
+                    $myExpenseShare += $totalQty > 0
+                        ? (float)$expense->amount * ($myQty / $totalQty)
+                        : 0;
+                } elseif ($expense->allocation_method === 'by_value') {
+                    $totalValue = $po->items->sum(fn($i) => (float)$i->line_total);
+                    $myValue = (float)$this->line_total;
+                    $myExpenseShare += $totalValue > 0
+                        ? (float)$expense->amount * ($myValue / $totalValue)
+                        : 0;
+                }
             }
+
+            // Product-specific expenses (full amount, split by qty)
+            $productExpenses = $po->expenses()
+                ->whereIn('status', ['approved', 'paid'])
+                ->where('product_id', $this->product_id)
+                ->where('allocation_method', '!=', 'none')
+                ->where('allocation_method', '!=', 'specific')
+                ->sum('amount');
+
+            // Specific allocations via expense_allocations table
+            $specificAllocations = $this->expenseAllocations()
+                ->whereHas('expense', fn($q) => $q->whereIn('status', ['approved', 'paid']))
+                ->sum('amount');
+
+            $totalExpenseShare = $myExpenseShare + $productExpenses + $specificAllocations;
+        } catch (\Exception $e) {
+            // Columns or tables don't exist yet (migration not run)
+            $totalExpenseShare = 0;
         }
-
-        // Product-specific expenses (full amount, split by qty)
-        $productExpenses = $po->expenses()
-            ->whereIn('status', ['approved', 'paid'])
-            ->where('product_id', $this->product_id)
-            ->where('allocation_method', '!=', 'none')
-            ->where('allocation_method', '!=', 'specific')
-            ->sum('amount');
-
-        // Specific allocations via expense_allocations table
-        $specificAllocations = $this->expenseAllocations()
-            ->whereHas('expense', fn($q) => $q->whereIn('status', ['approved', 'paid']))
-            ->sum('amount');
-
-        $totalExpenseShare = $myExpenseShare + $productExpenses + $specificAllocations;
         $perUnitExpenses = $myQty > 0 ? $totalExpenseShare / $myQty : 0;
         $perUnitPoCosts = $myQty > 0 ? $allocatedPoCosts / $myQty : 0;
 
