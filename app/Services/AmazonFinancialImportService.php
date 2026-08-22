@@ -690,6 +690,12 @@ PROMPT;
             'errors' => [],
         ];
 
+        // Prevent double-commit
+        if ($import->status === 'imported') {
+            $stats['errors'][] = 'This import has already been committed.';
+            return $stats;
+        }
+
         $transactions = $import->transactions()
             ->whereNotIn('match_status', ['duplicate', 'ignored'])
             ->get();
@@ -763,6 +769,11 @@ PROMPT;
                                     $stats['expenses_created']++;
                                 }
                             }
+                        }
+
+                        // Deduct inventory for matched orders, restore for refunds
+                        if ($txn->product_id) {
+                            $this->adjustInventoryFromTransaction($txn);
                         }
                     }
                 } catch (\Exception $e) {
@@ -883,6 +894,70 @@ PROMPT;
         }
 
         return $updated;
+    }
+
+    /**
+     * Deduct inventory for order transactions, restore for refunds.
+     * Quantity is inferred from revenue divided by product sale price.
+     * Prevents double-deduction by checking if this transaction already affected stock.
+     */
+    private function adjustInventoryFromTransaction(AmazonSettlementTransaction $txn): void
+    {
+        $product = Product::find($txn->product_id);
+        if (!$product) {
+            return;
+        }
+
+        // Check raw_data for a quantity field (some settlement formats include it)
+        $rawData = $txn->raw_data ?? [];
+        $quantity = null;
+        foreach (['quantity', 'qty', 'quantity_purchased', 'item_quantity'] as $qKey) {
+            if (isset($rawData[$qKey]) && (int)$rawData[$qKey] > 0) {
+                $quantity = (int)$rawData[$qKey];
+                break;
+            }
+        }
+
+        // Infer quantity from revenue / sale price if not explicitly provided
+        if (!$quantity || $quantity <= 0) {
+            $revenue = (float)$txn->revenue;
+            $salePrice = (float)$product->amazon_sell_price;
+            if ($revenue > 0 && $salePrice > 0) {
+                $quantity = (int)round($revenue / $salePrice);
+            }
+        }
+
+        // Infer from total amount if still unknown
+        if (!$quantity || $quantity <= 0) {
+            $amount = abs((float)$txn->amount);
+            $salePrice = (float)$product->amazon_sell_price;
+            if ($amount > 0 && $salePrice > 0) {
+                $quantity = (int)round($amount / $salePrice);
+            }
+        }
+
+        if (!$quantity || $quantity <= 0) {
+            // Default to 1 if we can't infer quantity
+            $quantity = 1;
+        }
+
+        if ($txn->transaction_type === 'order') {
+            $product->adjustStock($quantity, 'subtract');
+            Log::info("Inventory deducted for product #{$product->id}", [
+                'product' => $product->product_name,
+                'quantity' => $quantity,
+                'remaining_stock' => $product->fresh()->stock_quantity,
+                'txn_id' => $txn->id,
+            ]);
+        } elseif ($txn->transaction_type === 'refund') {
+            $product->adjustStock($quantity, 'add');
+            Log::info("Inventory restored for product #{$product->id}", [
+                'product' => $product->product_name,
+                'quantity' => $quantity,
+                'remaining_stock' => $product->fresh()->stock_quantity,
+                'txn_id' => $txn->id,
+            ]);
+        }
     }
 
     private function pickField(array $row, array $keys): ?string
